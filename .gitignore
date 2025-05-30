@@ -1,0 +1,11 @@
+# folders
+node_modules
+build
+
+# hidden files and folders
+.env.local
+.smithery
+.DS_Store
+
+# files
+example.md

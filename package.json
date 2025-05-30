@@ -1,0 +1,32 @@
+{
+  "name": "mcp-semanticscholar",
+  "module": "./src/index.ts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "semantic": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\""
+  },
+  "files": [
+    "build"
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.8.0",
+    "@tanstack/react-query": "^5.69.0",
+    "axios": "^1.8.4",
+    "zod": "^3.24.2"
+  }
+}
