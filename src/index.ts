@@ -1446,18 +1446,23 @@ export function createStatelessServer({
       };
     }
   );
-
-  // Start the server
-  async function main() {
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error("Semantic Scholar MCP Server running on stdio");
-  }
-
-  main().catch((error) => {
-    console.error("Fatal error in main():", error);
-    process.exit(1);
-  });
-
   return server.server;
 }
+
+// Start the server
+async function main() {
+  const server = createStatelessServer({
+    config: {
+      apiKey: process.env.SEMANTIC_SCHOLAR_API_KEY || "",
+      debug: process.env.DEBUG === "false",
+    },
+  });
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("Semantic Scholar MCP Server running on stdio");
+}
+
+main().catch((error) => {
+  console.error("Fatal error in main():", error);
+  process.exit(1);
+});
