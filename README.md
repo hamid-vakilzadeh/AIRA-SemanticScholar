@@ -2,25 +2,21 @@
 
 # AI - Research Assistant
 
-<div style="background-color:rgb(114, 114, 114); color: white; padding: 12px; border-left: 4px solid #007acc;">
-  The MCP project extends the work we started in our academic paper on using AI as a research assistant. In that paper, we focused on retrieval-augmented generation (RAG) as a practical approach to support research tasks. By the time the paper was published, we had already moved forward with MCP, which takes the core ideas further and delivers a more capable system. While MCP isn’t covered in the paper, it continues the same effort and reflects what we learned along the way. 
-  <br>
-  <br>
-  If you’re referencing this project, please also cite the following paper to acknowledge the original research:
-  <br>
-  <strong style="color: Black;">Vakilzadeh, H., and Wood, D. A. (2025). The Development of a RAG-Based Artificial Intelligence Research Assistant (AIRA). <em>Journal of Information Systems forthcoming</em>.</strong>
+> The MCP project extends the work we started in our academic paper on using AI as a research assistant. In that paper, we focused on retrieval-augmented generation (RAG) as a practical approach to support research tasks. By the time the paper was published, we had already moved forward with MCP, which takes the core ideas further and delivers a more capable system. While MCP isn’t covered in the paper, it continues the same effort and reflects what we learned along the way.
+>
+> If you’re referencing this project, please also cite the following paper to acknowledge the original research:
+>
+> <strong>Vakilzadeh, H., and Wood, D. A. (2025). The Development of a RAG-Based Artificial Intelligence Research Assistant (AIRA). <em>Journal of Information Systems forthcoming</em>.</strong>
 
-</div>
+> To use this MCP:
+>
+> 1. Install [Node.JS](https://nodejs.org)
+> 1. Install the MCP server for called [AI Research Assistant - Semantic Scholar](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar)
+> 1. Restart your AI platform (aka Claude Desktop)
 
-<div style="background-color:rgb(56, 166, 120); color: white; padding: 12px; border-left: 4px solid #007acc;">
-  <p>To use this MCP:</p>
-  <ol>
-  <li>Install <a style="color: blue;" href="https://nodejs.org">Node.JS</a></li>
-  <li>Install the MCP server for <a style="color: blue;" href="https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar">AI Research Assistant - Semantic Scholar</a></li>
-  <li>Restart your AI platform (aka Claude Desktop)</li>
-  </ol>
-
-</div>
+> **Note:**
+>
+> - The API allows up to 100 requests per 5 minutes. To access a higher rate limit, visit [Semantic Scholar](https://www.semanticscholar.org/product/api#Partner-Form) to request authentication for your project.
 
 ## Semantic Scholar MCP Server
 
