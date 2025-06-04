@@ -1,3 +1,5 @@
+[![smithery badge](https://smithery.ai/badge/@hamid-vakilzadeh/mcpsemanticscholar)](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar)
+
 # Semantic Scholar MCP Server
 
 A Model Context Protocol (MCP) server that provides AI models with comprehensive access to the Semantic Scholar Academic Graph API. This server enables intelligent literature search, paper analysis, and citation network exploration through a robust set of tools, resources, and prompts.
