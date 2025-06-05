@@ -12,9 +12,7 @@
 
 First, make sure you've downloaded and installed the [Claude Desktop app](https://claude.ai/download) and you have [npm](https://nodejs.org/en).
 
-To install this MCP Server via [Smithery](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar):
-
-Then open your terminal/CMD and run the following command:
+To install this MCP Server via [Smithery](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar) open your terminal/CMD and run the following command:
 
 ```bash
 npx -y @smithery/cli@latest install @hamid-vakilzadeh/mcpsemanticscholar --client claude
