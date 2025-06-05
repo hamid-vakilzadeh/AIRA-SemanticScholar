@@ -20,10 +20,6 @@ npx -y @smithery/cli@latest install @hamid-vakilzadeh/mcpsemanticscholar --clien
 
 Finally, restart Claude Desktop and the MCP should apper in `search and tools`.
 
-<center>
-  <img src="public/MCP - Demo.gif" alt="Description of GIF" width="600">
-</center>
-
 > **Note:**
 >
 > - The API allows up to 100 requests per 5 minutes. To access a higher rate limit, visit [Semantic Scholar](https://www.semanticscholar.org/product/api#Partner-Form) to request authentication for your project.
