@@ -2,7 +2,7 @@
 
 # AI - Research Assistant
 
-> The MCP project extends the work we started in our academic paper on using AI as a research assistant. In that paper, we focused on retrieval-augmented generation (RAG) as a practical approach to support research tasks. By the time the paper was published, we had already moved forward with MCP, which takes the core ideas further and delivers a more capable system. While MCP isn’t covered in the paper, it continues the same effort and reflects what we learned along the way.
+> The MCP project extends the work we started in our academic paper on using AI as a research assistant. In that paper, we focused on [retrieval-augmented generation (RAG) as a practical approach to support research tasks](http://lit-review-assistant.streamlit.app/). By the time the paper was published, we had already moved forward with MCP, which takes the core ideas further and delivers a more capable system. While MCP isn’t covered in the paper, it continues the same effort and reflects what we learned along the way.
 >
 > If you’re referencing this project, please also cite the following paper to acknowledge the original research:
 >
