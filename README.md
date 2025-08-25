@@ -1,6 +1,8 @@
 [![smithery badge](https://smithery.ai/badge/@hamid-vakilzadeh/mcpsemanticscholar)](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar)
 
-# AI - Research Assistant
+# AI Research Assistant - MCP
+
+A Model Context Protocol (MCP) server that provides AI models with comprehensive access to the Semantic Scholar Academic Graph API. This server enables intelligent literature search, paper analysis, and citation network exploration through a robust set of tools, resources, and prompts.
 
 > The MCP project extends the work we started in our academic paper on using AI as a research assistant. In that paper, we focused on [retrieval-augmented generation (RAG) as a practical approach to support research tasks](http://lit-review-assistant.streamlit.app/). By the time the paper was published, we had already moved forward with MCP, which takes the core ideas further and delivers a more capable system. While MCP isn’t covered in the paper, it continues the same effort and reflects what we learned along the way.
 >
@@ -10,23 +12,40 @@
 
 ## Installation
 
-First, make sure you've downloaded and installed the [Claude Desktop app](https://claude.ai/download) and you have [node.js](https://nodejs.org/en).
+- To install this MCP Server visit [Smithery](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar).
 
-To install this MCP Server via [Smithery](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar) open your terminal/CMD and run the following command:
+## Optional: Wiley Full-Text Access
 
-```bash
-npx -y @smithery/cli@latest install @hamid-vakilzadeh/mcpsemanticscholar --client claude
+To enable full-text PDF download from Wiley papers, you'll need a Wiley TDM Client Token:
+
+1. **Visit**: [Wiley Text and Data Mining](https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining)
+2. **Accept** the Wiley terms and conditions for Text and Data Mining
+3. **Obtain** your TDM Client Token
+4. **Configure** the token in your Claude Desktop MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "semantic-scholar": {
+      "command": "node",
+      "args": ["/path/to/build/index.js"],
+      "env": {
+        "WILEY_TDM_CLIENT_TOKEN": "your-token-here"
+      }
+    }
+  }
+}
 ```
 
-Finally, restart Claude Desktop and the MCP should apper in `search and tools`.
+> **Requirements:**
+>
+> - You must have institutional access or subscription to download content
+> - Academic subscribers can access subscribed content for non-commercial research at no extra cost
+> - Rate limits: 3 articles/second, 60 requests/10 minutes
 
 > **Note:**
 >
-> - The API allows up to 100 requests per 5 minutes. To access a higher rate limit, visit [Semantic Scholar](https://www.semanticscholar.org/product/api#Partner-Form) to request authentication for your project.
-
-## Semantic Scholar MCP Server
-
-A Model Context Protocol (MCP) server that provides AI models with comprehensive access to the Semantic Scholar Academic Graph API. This server enables intelligent literature search, paper analysis, and citation network exploration through a robust set of tools, resources, and prompts.
+> - The Semantic Scholar API allows up to 100 requests per 5 minutes. To access a higher rate limit, visit [Semantic Scholar](https://www.semanticscholar.org/product/api#Partner-Form) to request authentication for your project.
 
 ## Features
 
@@ -54,3 +73,9 @@ A Model Context Protocol (MCP) server that provides AI models with comprehensive
 - Browse top papers by academic field
 - Filter research by publication venues
 - Access open access publications specifically
+
+### 📄 **Full-Text PDF Download**
+
+- Download and extract text from Wiley academic papers
+- In-memory PDF processing and text extraction
+- Support for institutional access and open access content

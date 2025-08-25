@@ -5,6 +5,7 @@ import {
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import axios from "axios";
 import {
   searchPapers,
   matchPaper,
@@ -16,11 +17,7 @@ import {
   getAuthor,
   getAuthorPapers,
 } from "./lib/api/semanticScholar/endpoints.js";
-import {
-  createFilter,
-  FIELDS_OF_STUDY,
-  PUBLICATION_TYPES,
-} from "./lib/api/semanticScholar/filters.js";
+import { createFilter } from "./lib/api/semanticScholar/filters.js";
 import { Paper, Author } from "./lib/api/semanticScholar/types.js";
 
 /**
@@ -32,7 +29,11 @@ import { Paper, Author } from "./lib/api/semanticScholar/types.js";
  * The server exposes resources, tools, and prompts for interacting with academic literature.
  */
 export const configSchema = z.object({
-  apiKey: z.string().describe("Your API key"),
+  apiKey: z.string().describe("Your Semantic Scholar API key"),
+  wileyToken: z
+    .string()
+    .optional()
+    .describe("Your Wiley TDM Client Token for downloading papers"),
   debug: z.boolean().default(false).describe("Enable debug logging"),
 });
 
@@ -42,7 +43,7 @@ export function createStatelessServer({
   config: z.infer<typeof configSchema>;
 }) {
   const server = new McpServer({
-    name: "semantic-scholar",
+    name: "AI Research Assistant",
     version: "1.0.0",
     capabilities: {
       resources: {},
@@ -71,6 +72,12 @@ export function createStatelessServer({
     }
     if (paper.venue) {
       result += `Venue: ${paper.venue}\n`;
+    }
+    if (paper.publicationVenue?.name) {
+      result += `Publisher: ${paper.publicationVenue.name}\n`;
+    }
+    if (paper.externalIds?.DOI) {
+      result += `DOI: ${paper.externalIds.DOI}\n`;
     }
     if (paper.citationCount !== undefined) {
       result += `Citations: ${paper.citationCount}\n`;
@@ -138,7 +145,7 @@ export function createStatelessServer({
         const paper = await getPaper({
           paperId,
           fields:
-            "paperId,title,abstract,year,venue,citationCount,authors,url,isOpenAccess,openAccessPdf,fieldsOfStudy",
+            "paperId,title,abstract,year,venue,publicationVenue,externalIds,citationCount,authors,url,isOpenAccess,openAccessPdf,fieldsOfStudy",
         });
 
         return {
@@ -309,6 +316,8 @@ export function createStatelessServer({
             "authors",
             "year",
             "venue",
+            "publicationVenue",
+            "externalIds",
             "citationCount",
             "url",
             "isOpenAccess",
@@ -317,7 +326,14 @@ export function createStatelessServer({
 
         const results = await searchPapers(filter);
 
-        let response = `Found ${results.total} papers matching "${query}"\n\n`;
+        let response = "";
+
+        // Show pagination info at the beginning
+        if (results.next) {
+          response += `**Note: More results available. To see the next page, use offset=${results.next} in your query.**\n\n`;
+        }
+
+        response += `Found ${results.total} papers matching "${query}"\n\n`;
 
         if (results.data.length === 0) {
           response += "No papers found matching your criteria.";
@@ -334,17 +350,23 @@ export function createStatelessServer({
             if (paper.venue) {
               response += `   Venue: ${paper.venue}\n`;
             }
+            if (paper.publicationVenue?.name) {
+              response += `   Publisher: ${paper.publicationVenue.name}\n`;
+            }
             if (paper.citationCount !== undefined) {
               response += `   Citations: ${paper.citationCount}\n`;
             }
             if (paper.url) {
               response += `   URL: ${paper.url}\n`;
             }
+            if (paper.externalIds) {
+              response += `   DOI: ${paper.externalIds.DOI}\n`;
+            }
             response += "\n";
           });
 
           if (results.next) {
-            response += `\nThere are more results available. Use offset=${results.next} to see the next page.`;
+            response += `\n**To see more results, use offset=${results.next} in your next query.**`;
           }
         }
 
@@ -436,6 +458,8 @@ export function createStatelessServer({
             "authors",
             "year",
             "venue",
+            "publicationVenue",
+            "externalIds",
             "citationCount",
             "url",
             "isOpenAccess",
@@ -468,7 +492,14 @@ export function createStatelessServer({
 
         const results = await searchPapers(filter);
 
-        let response = `Found ${results.total} papers matching "${query}"\n\n`;
+        let response = "";
+
+        // Show pagination info at the beginning
+        if (results.next) {
+          response += `**Note: More results available. To see the next page, use offset=${results.next} in your query.**\n\n`;
+        }
+
+        response += `Found ${results.total} papers matching "${query}"\n\n`;
 
         if (results.data.length === 0) {
           response += "No papers found matching your criteria.";
@@ -485,12 +516,19 @@ export function createStatelessServer({
             if (paper.venue) {
               response += `   Venue: ${paper.venue}\n`;
             }
+            if (paper.publicationVenue?.name) {
+              response += `   Publisher: ${paper.publicationVenue.name}\n`;
+            }
             if (paper.citationCount !== undefined) {
               response += `   Citations: ${paper.citationCount}\n`;
             }
             if (paper.url) {
               response += `   URL: ${paper.url}\n`;
             }
+            if (paper.externalIds) {
+              response += `   DOI: ${paper.externalIds.DOI}\n`;
+            }
+
             if (paper.isOpenAccess) {
               response += `   Open Access: Yes\n`;
             }
@@ -498,7 +536,7 @@ export function createStatelessServer({
           });
 
           if (results.next) {
-            response += `\nThere are more results available. Use offset=${results.next} to see the next page.`;
+            response += `\n**To see more results, use offset=${results.next} in your next query.**`;
           }
         }
 
@@ -525,7 +563,7 @@ export function createStatelessServer({
    * Find a paper by closest title match
    */
   server.tool(
-    "papers-match",
+    "search-paper-title",
     "Find a paper by closest title match",
     {
       title: z.string().describe("Paper title to match"),
@@ -567,10 +605,11 @@ export function createStatelessServer({
           "authors",
           "year",
           "venue",
+          "publicationVenue",
+          "externalIds",
           "citationCount",
           "url",
           "isOpenAccess",
-          "matchScore",
         ]);
 
         if (yearStart !== undefined || yearEnd !== undefined) {
@@ -588,13 +627,24 @@ export function createStatelessServer({
         const matchParams = filter.buildMatchParams();
         const paper = await matchPaper(matchParams);
 
+        // Debug: Check what we actually got back
+        if (!paper || !paper.title) {
+          console.error("Paper match returned incomplete data:", paper);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: Paper match endpoint returned incomplete data. Please try a more specific search query.`,
+              },
+            ],
+          };
+        }
+
         return {
           content: [
             {
               type: "text",
-              text:
-                formatPaper(paper) +
-                (paper.matchScore ? `Match Score: ${paper.matchScore}\n` : ""),
+              text: formatPaper(paper),
             },
           ],
         };
@@ -618,8 +668,8 @@ export function createStatelessServer({
    * Get detailed information about a specific paper
    */
   server.tool(
-    "papers-get",
-    "Get detailed information about a specific paper",
+    "get-paper-abstract",
+    "Get detailed information about a specific paper including its abstract",
     {
       paperId: z
         .string()
@@ -630,7 +680,7 @@ export function createStatelessServer({
         const paper = await getPaper({
           paperId,
           fields:
-            "paperId,title,abstract,year,venue,citationCount,authors,url,isOpenAccess,openAccessPdf,fieldsOfStudy",
+            "paperId,title,abstract,year,venue,publicationVenue,externalIds,citationCount,authors,url,isOpenAccess,openAccessPdf,fieldsOfStudy",
         });
 
         return {
@@ -681,11 +731,18 @@ export function createStatelessServer({
             offset: offset || 0,
             limit: limit || 10,
             fields:
-              "paperId,title,abstract,year,venue,citationCount,authors,url,isOpenAccess,contexts,isInfluential",
+              "paperId,title,abstract,year,venue,publicationVenue,citationCount,authors,url,isOpenAccess,contexts,isInfluential",
           }
         );
 
-        let response = `Citations for paper ID ${paperId}:\n\n`;
+        let response = "";
+
+        // Show pagination info at the beginning
+        if (citations.next) {
+          response += `**Note: More citations available. To see the next page, use offset=${citations.next} in your query.**\n\n`;
+        }
+
+        response += `Citations for paper ID ${paperId}:\n\n`;
 
         if (citations.data.length === 0) {
           response += "No citations found.";
@@ -712,7 +769,7 @@ export function createStatelessServer({
           });
 
           if (citations.next) {
-            response += `\nThere are more citations available. Use offset=${citations.next} to see the next page.`;
+            response += `\n**To see more citations, use offset=${citations.next} in your next query.**`;
           }
         }
 
@@ -764,11 +821,18 @@ export function createStatelessServer({
             offset: offset || 0,
             limit: limit || 10,
             fields:
-              "paperId,title,abstract,year,venue,citationCount,authors,url,isOpenAccess,contexts,isInfluential",
+              "paperId,title,abstract,year,venue,publicationVenue,citationCount,authors,url,isOpenAccess,contexts,isInfluential",
           }
         );
 
-        let response = `References for paper ID ${paperId}:\n\n`;
+        let response = "";
+
+        // Show pagination info at the beginning
+        if (references.next) {
+          response += `**Note: More references available. To see the next page, use offset=${references.next} in your query.**\n\n`;
+        }
+
+        response += `References for paper ID ${paperId}:\n\n`;
 
         if (references.data.length === 0) {
           response += "No references found.";
@@ -795,7 +859,7 @@ export function createStatelessServer({
           });
 
           if (references.next) {
-            response += `\nThere are more references available. Use offset=${references.next} to see the next page.`;
+            response += `\n**To see more references, use offset=${references.next} in your next query.**`;
           }
         }
 
@@ -847,7 +911,14 @@ export function createStatelessServer({
             "authorId,name,affiliations,paperCount,citationCount,hIndex,url",
         });
 
-        let response = `Found ${results.total} authors matching "${query}"\n\n`;
+        let response = "";
+
+        // Show pagination info at the beginning
+        if (results.next) {
+          response += `**Note: More authors available. To see the next page, use offset=${results.next} in your query.**\n\n`;
+        }
+
+        response += `Found ${results.total} authors matching "${query}"\n\n`;
 
         if (results.data.length === 0) {
           response += "No authors found matching your criteria.";
@@ -875,7 +946,7 @@ export function createStatelessServer({
           });
 
           if (results.next) {
-            response += `\nThere are more results available. Use offset=${results.next} to see the next page.`;
+            response += `\n**To see more authors, use offset=${results.next} in your next query.**`;
           }
         }
 
@@ -925,11 +996,18 @@ export function createStatelessServer({
             offset: offset || 0,
             limit: limit || 10,
             fields:
-              "paperId,title,abstract,year,venue,citationCount,authors,url,isOpenAccess",
+              "paperId,title,abstract,year,venue,publicationVenue,citationCount,authors,url,isOpenAccess",
           }
         );
 
-        let response = `Papers by author ID ${authorId}:\n\n`;
+        let response = "";
+
+        // Show pagination info at the beginning
+        if (papers.next) {
+          response += `**Note: More papers available. To see the next page, use offset=${papers.next} in your query.**\n\n`;
+        }
+
+        response += `Papers by author ID ${authorId}:\n\n`;
 
         if (papers.data.length === 0) {
           response += "No papers found.";
@@ -941,6 +1019,9 @@ export function createStatelessServer({
             if (paper.venue) {
               response += `   Venue: ${paper.venue}\n`;
             }
+            if (paper.publicationVenue?.name) {
+              response += `   Publisher: ${paper.publicationVenue.name}\n`;
+            }
             if (paper.citationCount !== undefined) {
               response += `   Citations: ${paper.citationCount}\n`;
             }
@@ -951,7 +1032,7 @@ export function createStatelessServer({
           });
 
           if (papers.next) {
-            response += `\nThere are more papers available. Use offset=${papers.next} to see the next page.`;
+            response += `\n**To see more papers, use offset=${papers.next} in your next query.**`;
           }
         }
 
@@ -1033,6 +1114,9 @@ export function createStatelessServer({
             if (paper.venue) {
               response += `   Venue: ${paper.venue}\n`;
             }
+            if (paper.publicationVenue?.name) {
+              response += `   Publisher: ${paper.publicationVenue.name}\n`;
+            }
             if (paper.citationCount !== undefined) {
               response += `   Citations: ${paper.citationCount}\n`;
             }
@@ -1052,6 +1136,245 @@ export function createStatelessServer({
             {
               type: "text",
               text: `Error in batch paper lookup: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  /**
+   * Download full-text PDF from Wiley and convert to text
+   */
+  server.tool(
+    "download-full-paper-wiley",
+    "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
+    {
+      doi: z
+        .string()
+        .describe(
+          "DOI of the paper to download (e.g., 10.1111/1467-923X.12168)"
+        ),
+    },
+    async ({ doi }) => {
+      try {
+        // Check if Wiley token is configured
+        if (!config.wileyToken) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "Error: Wiley TDM Client Token not configured.\n\n" +
+                  "Tell the user to download full-text PDFs from Wiley, you need to:\n" +
+                  "1. Visit: https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining\n" +
+                  "2. Accept the Wiley terms and conditions for Text and Data Mining\n" +
+                  "3. Obtain your TDM Client Token\n" +
+                  "4. Set the WILEY_TDM_CLIENT_TOKEN environment variable\n\n" +
+                  "Note: You must have institutional access or subscription to the content you want to download.\n" +
+                  "Academic subscribers can access subscribed content for non-commercial research purposes at no extra cost.",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        // Encode DOI for URL (replace / with %2F)
+        const encodedDoi = encodeURIComponent(doi);
+        const downloadUrl = `https://api.wiley.com/onlinelibrary/tdm/v1/articles/${encodedDoi}`;
+
+        // Make request with Wiley token - Wiley always returns PDFs
+        const response = await axios.get(downloadUrl, {
+          headers: {
+            "Wiley-TDM-Client-Token": config.wileyToken,
+            Accept: "application/pdf",
+          },
+          responseType: "arraybuffer",
+          maxRedirects: 5, // Follow redirects as required by Wiley
+          timeout: 60000, // 60 second timeout for large files
+        });
+
+        // Buffer the entire response in memory
+        const pdfBuffer = Buffer.from(response.data);
+
+        // Extract text using pdfjs-dist (Mozilla's PDF.js library)
+        try {
+          // Set up DOM polyfills for Node.js environment
+          const DOMMatrixModule = await import("@thednp/dommatrix");
+          (global as any).DOMMatrix = DOMMatrixModule.default;
+
+          // Ensure Promise.withResolvers is available (polyfill if needed)
+          if (!Promise.withResolvers) {
+            (Promise as any).withResolvers = function () {
+              let resolve, reject;
+              const promise = new Promise((res, rej) => {
+                resolve = res;
+                reject = rej;
+              });
+              return { promise, resolve, reject };
+            };
+          }
+
+          // Redirect pdfjs-dist warnings from stdout to stderr
+          const originalWrite = process.stdout.write;
+          process.stdout.write = function (chunk: any) {
+            if (typeof chunk === "string" && chunk.includes("Warning:")) {
+              process.stderr.write(chunk);
+              return true;
+            }
+            return originalWrite.call(process.stdout, chunk);
+          };
+
+          const pdfjsLib = await import("pdfjs-dist");
+
+          // Restore original stdout
+          process.stdout.write = originalWrite;
+
+          // Convert Buffer to Uint8Array as required by pdfjs-dist
+          const uint8Array = new Uint8Array(pdfBuffer);
+
+          // Load PDF from Uint8Array
+          const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+          const pdfDoc = await loadingTask.promise;
+
+          let extractedText = "";
+
+          // Extract text from all pages
+          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum);
+            const textContent = await page.getTextContent();
+
+            // Combine text items from the page
+            const pageText = textContent.items
+              .map((item: any) => item.str)
+              .join(" ");
+
+            extractedText += pageText + "\n\n";
+          }
+
+          // Clean up the extracted text
+          const cleanText = extractedText.trim();
+
+          if (!cleanText || cleanText.length < 50) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `PDF downloaded successfully but contains minimal text content.\n` +
+                    `This may be a scanned PDF or contain mostly images.\n` +
+                    `Extracted content length: ${cleanText.length} characters`,
+                },
+              ],
+            };
+          }
+
+          // Return the extracted text
+          return {
+            content: [
+              {
+                type: "text",
+                text: cleanText,
+              },
+            ],
+          };
+        } catch (parseError) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `PDF download succeeded but text extraction failed.\n` +
+                  `Error: ${
+                    parseError instanceof Error
+                      ? parseError.message
+                      : String(parseError)
+                  }`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      } catch (error) {
+        // Handle specific Wiley API errors
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 400) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Error 400: No TDM Client Token was found in the request.\n\n" +
+                    "Please visit https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining " +
+                    "to obtain your Wiley TDM Client Token and configure it properly.",
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (error.response?.status === 403) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Error 403: The Wiley TDM Client Token is invalid or not registered.\n\n" +
+                    "Your token may be:\n" +
+                    "- Incorrectly formatted\n" +
+                    "- Expired or revoked\n" +
+                    "- Not properly registered with Wiley\n\n" +
+                    "Please visit https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining " +
+                    "to verify your token or obtain a new one.",
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (error.response?.status === 404) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `Error 404: Access denied for DOI ${doi}\n\n` +
+                    "This means:\n" +
+                    "- Your institution doesn't have a subscription to this content\n" +
+                    "- The content is not open access\n" +
+                    "- The DOI may be incorrect or the article doesn't exist\n\n" +
+                    "Contact your institution's library to verify access rights or check if " +
+                    "alternative versions of the paper are available through other sources.",
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (error.response?.status === 429) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Error 429: Rate limit exceeded\n\n" +
+                    "Wiley's API limits are:\n" +
+                    "- Maximum 3 articles per second\n" +
+                    "- Maximum 60 requests per 10 minutes\n\n" +
+                    "Please wait before making additional requests. Consider implementing " +
+                    "delays between requests to stay within the rate limits.",
+                },
+              ],
+              isError: true,
+            };
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error downloading paper: ${
                 error instanceof Error ? error.message : String(error)
               }`,
             },
@@ -1454,6 +1777,7 @@ async function main() {
   const server = createStatelessServer({
     config: {
       apiKey: process.env.SEMANTIC_SCHOLAR_API_KEY || "",
+      wileyToken: process.env.WILEY_TDM_CLIENT_TOKEN || undefined,
       debug: process.env.DEBUG === "false",
     },
   });

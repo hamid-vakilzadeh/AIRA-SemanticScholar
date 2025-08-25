@@ -169,6 +169,16 @@ export const matchPaper = async (
       throw new Error("Invalid response format from paper match endpoint");
     }
 
+    // The match endpoint returns a data array with the best match
+    if (response.data.data && Array.isArray(response.data.data)) {
+      if (response.data.data.length === 0) {
+        throw new Error("No matching paper found");
+      }
+      // Return the first (best) match
+      return response.data.data[0];
+    }
+
+    // Fallback for unexpected response format
     return response.data;
   } catch (error: unknown) {
     if (axios.isAxiosError(error)) {
