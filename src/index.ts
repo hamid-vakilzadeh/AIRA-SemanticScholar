@@ -3,7 +3,6 @@ import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import axios from "axios";
 import {
@@ -29,7 +28,7 @@ import { Paper, Author } from "./lib/api/semanticScholar/types.js";
  * The server exposes resources, tools, and prompts for interacting with academic literature.
  */
 export const configSchema = z.object({
-  apiKey: z.string().describe("Your Semantic Scholar API key"),
+  apiKey: z.string().optional().describe("Your Semantic Scholar API key"),
   wileyToken: z
     .string()
     .optional()
@@ -37,7 +36,7 @@ export const configSchema = z.object({
   debug: z.boolean().default(false).describe("Enable debug logging"),
 });
 
-export function createStatelessServer({
+export default function createServer({
   config,
 }: {
   config: z.infer<typeof configSchema>;
@@ -1772,21 +1771,3 @@ export function createStatelessServer({
   return server.server;
 }
 
-// Start the server
-async function main() {
-  const server = createStatelessServer({
-    config: {
-      apiKey: process.env.SEMANTIC_SCHOLAR_API_KEY || "",
-      wileyToken: process.env.WILEY_TDM_CLIENT_TOKEN || undefined,
-      debug: process.env.DEBUG === "false",
-    },
-  });
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Semantic Scholar MCP Server running on stdio");
-}
-
-main().catch((error) => {
-  console.error("Fatal error in main():", error);
-  process.exit(1);
-});

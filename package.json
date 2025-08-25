@@ -8,7 +8,8 @@
     "semantic": "./build/index.js"
   },
   "scripts": {
-    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\""
+    "build": "npx @smithery/cli build",
+    "dev": "npx @smithery/cli dev"
   },
   "files": [
     "build"
@@ -18,6 +19,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@smithery/cli": "^1.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.1.0",
     "tsx": "^4.19.4",

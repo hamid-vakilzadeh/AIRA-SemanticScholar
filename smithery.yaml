@@ -1,33 +1,23 @@
-# Smithery configuration file: https://smithery.ai/docs/deployments
-
+# Smithery configuration file: https://smithery.ai/docs/build/project-config/smithery-yaml
+runtime: "typescript"
 startCommand:
-  type: stdio
+  type: "http"
+  # JSON Schema defining the configuration options for the MCP.
   configSchema:
-    # JSON Schema defining the configuration options for the MCP.
-    type: object
+    type: "object"
     properties:
-      SEMANTIC_SCHOLAR_API_KEY:
-        type: string
-        description: The API key for accessing the Semantic Scholar API.
-      WILEY_TDM_CLIENT_TOKEN:
-        type: string
-        description: The Wiley TDM Client Token for downloading full-text PDFs from Wiley.
-  commandFunction:
-    # A function that produces the CLI command to start the MCP on stdio.
-    |-
-    (config) => {
-      const env = {}
-      if (config.SEMANTIC_SCHOLAR_API_KEY) {
-        env.SEMANTIC_SCHOLAR_API_KEY = config.SEMANTIC_SCHOLAR_API_KEY
-      }
-      if (config.WILEY_TDM_CLIENT_TOKEN) {
-        env.WILEY_TDM_CLIENT_TOKEN = config.WILEY_TDM_CLIENT_TOKEN
-      }
-      return { 
-        command: 'node', 
-        args: [
-          'build/index.js', 
-        ], 
-        env 
-      }
-    }
+      apiKey:
+        type: "string"
+        description: "Your Semantic Scholar API key"
+      wileyToken:
+        type: "string"
+        description: "Your Wiley TDM Client Token for downloading papers"
+      debug:
+        type: "boolean"
+        default: false
+        description: "Enable debug logging"
+    required: []
+  exampleConfig:
+    apiKey: "your-semantic-scholar-api-key-here"
+    wileyToken: "your-wiley-token-here"
+    debug: false
