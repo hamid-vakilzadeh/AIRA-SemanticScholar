@@ -5,6 +5,7 @@ startCommand:
   # JSON Schema defining the configuration options for the MCP.
   configSchema:
     type: "object"
+    required: []
     properties:
       SEMANTIC_SCHOLAR_API_KEY:
         type: "string"
@@ -16,7 +17,6 @@ startCommand:
         type: "boolean"
         default: false
         description: "Enable debug logging"
-    required: []
   exampleConfig:
     SEMANTIC_SCHOLAR_API_KEY: "your-semantic-scholar-api-key-here"
     WILEY_TDM_CLIENT_TOKEN: "your-wiley-token-here"
