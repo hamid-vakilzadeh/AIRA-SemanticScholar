@@ -12,9 +12,11 @@ startCommand:
     properties:
       SEMANTIC_SCHOLAR_API_KEY:
         type: "string"
+        title: "Semantic Scholar API Key"
         description: "Your Semantic Scholar API key"
       WILEY_TDM_CLIENT_TOKEN:
         type: "string"
+        title: "Wiley TDM Client Token"
         description: "Your Wiley TDM Client Token for downloading papers"
       debug:
         type: "boolean"
