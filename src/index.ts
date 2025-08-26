@@ -1,8 +1,12 @@
 #!/usr/bin/env node
+import express, { Request, Response } from "express";
+import cors from "cors";
 import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import axios from "axios";
 import {
@@ -18,6 +22,21 @@ import {
 } from "./lib/api/semanticScholar/endpoints.js";
 import { createFilter } from "./lib/api/semanticScholar/filters.js";
 import { Paper, Author } from "./lib/api/semanticScholar/types.js";
+import semanticScholarClient from "./lib/api/semanticScholar/client.js";
+
+const app = express();
+const PORT = process.env.PORT || 8081;
+
+// CORS configuration for browser-based MCP clients
+app.use(
+  cors({
+    origin: "*", // Configure appropriately for production
+    exposedHeaders: ["Mcp-Session-Id", "mcp-protocol-version"],
+    allowedHeaders: ["Content-Type", "mcp-session-id"],
+  })
+);
+
+app.use(express.json());
 
 /**
  * Semantic Scholar MCP Server
@@ -38,6 +57,25 @@ export const configSchema = z.object({
     .describe("Your Wiley TDM Client Token for downloading papers"),
   debug: z.boolean().default(false).describe("Enable debug logging"),
 });
+
+// Parse configuration from HTTP request query parameters
+function parseConfig(req: Request): any {
+  try {
+    const configParam = req.query.config as string;
+    if (configParam) {
+      const configJson = Buffer.from(configParam, "base64").toString();
+      const parsedConfig = JSON.parse(configJson);
+
+      return parsedConfig;
+    }
+
+    console.log("No config parameter found in HTTP request");
+    return {};
+  } catch (error) {
+    console.error("Error parsing config from HTTP request:", error);
+    return {};
+  }
+}
 
 export default function createServer({
   config,
@@ -1773,3 +1811,84 @@ export default function createServer({
   );
   return server.server;
 }
+
+// Handle MCP requests at /mcp endpoint
+app.all("/mcp", async (req: Request, res: Response) => {
+  try {
+    // Parse configuration from HTTP request
+    const rawConfig = parseConfig(req);
+
+    // Parse and validate configuration with schema
+    const config = configSchema.parse({
+      SEMANTIC_SCHOLAR_API_KEY:
+        rawConfig.SEMANTIC_SCHOLAR_API_KEY ||
+        process.env.SEMANTIC_SCHOLAR_API_KEY ||
+        undefined,
+      WILEY_TDM_CLIENT_TOKEN:
+        rawConfig.WILEY_TDM_CLIENT_TOKEN ||
+        process.env.WILEY_TDM_CLIENT_TOKEN ||
+        undefined,
+      debug: rawConfig.debug || false,
+    });
+
+    // Set API key on the semantic scholar client
+    if (config.SEMANTIC_SCHOLAR_API_KEY) {
+      semanticScholarClient.defaults.headers.common["x-api-key"] =
+        config.SEMANTIC_SCHOLAR_API_KEY;
+    }
+
+    const server = createServer({ config });
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+
+    // Clean up on request close
+    res.on("close", () => {
+      transport.close();
+      server.close();
+    });
+
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("Error handling MCP request:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal server error" },
+        id: null,
+      });
+    }
+  }
+});
+
+// Main function to start the server in the appropriate mode
+async function main() {
+  const transport = process.env.TRANSPORT || "stdio";
+
+  if (transport === "http") {
+    // Run in HTTP mode
+    app.listen(PORT, () => {
+      console.log(`MCP HTTP Server listening on port ${PORT}`);
+    });
+  } else {
+    // Optional: backward compatibility with STDIO transport
+    const config = configSchema.parse({
+      SEMANTIC_SCHOLAR_API_KEY:
+        process.env.SEMANTIC_SCHOLAR_API_KEY || undefined,
+      WILEY_TDM_CLIENT_TOKEN: process.env.WILEY_TDM_CLIENT_TOKEN || undefined,
+      debug: process.env.DEBUG === "true" || false,
+    });
+
+    const server = createServer({ config });
+    const stdioTransport = new StdioServerTransport();
+    await server.connect(stdioTransport);
+    console.error("MCP Server running in stdio mode");
+  }
+}
+
+// Start the server
+main().catch((error) => {
+  console.error("Server error:", error);
+  process.exit(1);
+});
