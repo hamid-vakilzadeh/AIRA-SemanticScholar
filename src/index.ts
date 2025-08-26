@@ -28,8 +28,11 @@ import { Paper, Author } from "./lib/api/semanticScholar/types.js";
  * The server exposes resources, tools, and prompts for interacting with academic literature.
  */
 export const configSchema = z.object({
-  apiKey: z.string().optional().describe("Your Semantic Scholar API key"),
-  wileyToken: z
+  SEMANTIC_SCHOLAR_API_KEY: z
+    .string()
+    .optional()
+    .describe("Your Semantic Scholar API key"),
+  WILEY_TDM_CLIENT_TOKEN: z
     .string()
     .optional()
     .describe("Your Wiley TDM Client Token for downloading papers"),
@@ -1161,7 +1164,7 @@ export default function createServer({
     async ({ doi }) => {
       try {
         // Check if Wiley token is configured
-        if (!config.wileyToken) {
+        if (!config.WILEY_TDM_CLIENT_TOKEN) {
           return {
             content: [
               {
@@ -1188,7 +1191,7 @@ export default function createServer({
         // Make request with Wiley token - Wiley always returns PDFs
         const response = await axios.get(downloadUrl, {
           headers: {
-            "Wiley-TDM-Client-Token": config.wileyToken,
+            "Wiley-TDM-Client-Token": config.WILEY_TDM_CLIENT_TOKEN,
             Accept: "application/pdf",
           },
           responseType: "arraybuffer",
@@ -1770,4 +1773,3 @@ export default function createServer({
   );
   return server.server;
 }
-

@@ -6,10 +6,10 @@ startCommand:
   configSchema:
     type: "object"
     properties:
-      apiKey:
+      SEMANTIC_SCHOLAR_API_KEY:
         type: "string"
         description: "Your Semantic Scholar API key"
-      wileyToken:
+      WILEY_TDM_CLIENT_TOKEN:
         type: "string"
         description: "Your Wiley TDM Client Token for downloading papers"
       debug:
@@ -18,6 +18,6 @@ startCommand:
         description: "Enable debug logging"
     required: []
   exampleConfig:
-    apiKey: "your-semantic-scholar-api-key-here"
-    wileyToken: "your-wiley-token-here"
+    SEMANTIC_SCHOLAR_API_KEY: "your-semantic-scholar-api-key-here"
+    WILEY_TDM_CLIENT_TOKEN: "your-wiley-token-here"
     debug: false

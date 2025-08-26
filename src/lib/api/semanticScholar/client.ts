@@ -9,9 +9,9 @@ const semanticScholarClient = axios.create({
 });
 
 // Add API key if available
-if (process.env.NEXT_PUBLIC_SEMANTIC_SCHOLAR_API) {
+if (process.env.SEMANTIC_SCHOLAR_API_KEY) {
   semanticScholarClient.defaults.headers.common["x-api-key"] =
-    process.env.NEXT_PUBLIC_SEMANTIC_SCHOLAR_API;
+    process.env.SEMANTIC_SCHOLAR_API_KEY;
 }
 
 // Track last request time for rate-limited endpoints
