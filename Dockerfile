@@ -1,39 +1,24 @@
-# Use the official Node.js 18 image as a parent image
-FROM node:18-alpine AS builder
+FROM node:22-alpine
 
-# Set the working directory in the container to /app
+# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json into the container
-COPY package.json package-lock.json ./
+# Copy package files
+COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --ignore-scripts
+# Install all dependencies
+RUN npm ci
 
-# Copy the rest of the application code into the container
+# Copy source code
 COPY src/ ./src/
 COPY tsconfig.json ./
 
-# Build the project
+# Build the TypeScript code
 RUN npm run build
 
-# Use a minimal node image as the base image for running
-FROM node:18-alpine AS runner
+# Expose port
+EXPOSE 8081
 
-WORKDIR /app
-
-# Copy compiled code from the builder stage
-COPY --from=builder /app/build ./build
-COPY package.json package-lock.json ./
-
-# Install only production dependencies
-RUN npm ci --production --ignore-scripts
-
-# Set environment variable for the Exa API key
-ENV EXA_API_KEY=your-api-key-here
-
-# Expose the port the app runs on
-EXPOSE 3000
-
-# Run the application
-ENTRYPOINT ["node", "build/index.js"]
+# Start the server in HTTP mode
+ENV TRANSPORT=http
+CMD ["node", "build/index.js"]
