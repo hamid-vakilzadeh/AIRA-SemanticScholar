@@ -1187,6 +1187,144 @@ export default function createServer({
   );
 
   /**
+   * Fetch any DOI URL and return the page content
+   */
+  server.tool(
+    "fetch-doi-url",
+    "Fetch content from a DOI URL by constructing the URL from a DOI",
+    {
+      doi: z
+        .string()
+        .describe(
+          "DOI identifier (e.g., 10.1016/j.aos.2025.101608 or just the DOI without URL)"
+        ),
+    },
+    async ({ doi }) => {
+      try {
+        // Clean the DOI - remove any URL prefixes if present
+        let cleanDoi = doi;
+        if (doi.includes("doi.org/")) {
+          cleanDoi = doi.split("doi.org/").pop() || doi;
+        }
+        if (doi.includes("dx.doi.org/")) {
+          cleanDoi = doi.split("dx.doi.org/").pop() || doi;
+        }
+        
+        // Construct the DOI URL
+        const doiUrl = `https://doi.org/${cleanDoi}`;
+        
+        // Fetch the URL - DOI URLs typically redirect to the publisher's site
+        const response = await axios.get(doiUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; MCP-SemanticScholar/1.0)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          maxRedirects: 5,
+          timeout: 30000, // 30 second timeout
+          validateStatus: (status) => status < 500, // Accept redirects
+        });
+
+        // Get the final URL after redirects
+        const finalUrl = response.request?.res?.responseUrl || response.config.url;
+        
+        // Extract basic information from the HTML
+        const htmlContent = response.data;
+        
+        // Try to extract title
+        const titleMatch = htmlContent.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].trim() : 'Unknown Title';
+        
+        // Try to extract meta description
+        const descMatch = htmlContent.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i);
+        const description = descMatch ? descMatch[1].trim() : '';
+        
+        // Try to extract abstract if present
+        const abstractMatch = htmlContent.match(/<(?:div|section)[^>]*(?:class|id)=["'][^"']*abstract[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|section)>/i);
+        const abstract = abstractMatch ? abstractMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+        
+        // Construct response
+        let responseText = `DOI URL Fetch Results\n`;
+        responseText += `===================\n\n`;
+        responseText += `DOI: ${cleanDoi}\n`;
+        responseText += `Original URL: ${doiUrl}\n`;
+        responseText += `Final URL: ${finalUrl}\n\n`;
+        responseText += `Title: ${title}\n\n`;
+        
+        if (description) {
+          responseText += `Description: ${description}\n\n`;
+        }
+        
+        if (abstract && abstract.length > 50) {
+          responseText += `Abstract:\n${abstract.substring(0, 2000)}${abstract.length > 2000 ? '...' : ''}\n\n`;
+        }
+        
+        // Add note about full content
+        responseText += `Note: This tool fetches the HTML page from the DOI URL. `;
+        responseText += `For full PDF content extraction from Wiley papers, use the 'download-full-paper-wiley' tool instead.\n`;
+        responseText += `The page may require institutional access or subscription for full content.\n`;
+        
+        // If we want to provide more content, we could extract more text
+        if (!abstract || abstract.length < 100) {
+          // Try to extract main content
+          const bodyText = htmlContent
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          if (bodyText.length > 500) {
+            responseText += `\nPage Preview (first 1500 characters):\n`;
+            responseText += bodyText.substring(0, 1500) + '...\n';
+          }
+        }
+
+        return {
+          content: [{ type: "text", text: responseText }],
+        };
+        
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 404) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: DOI not found (404)\n\nThe DOI '${doi}' could not be resolved. Please check if the DOI is correct.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (error.code === 'ECONNABORTED') {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: Request timeout\n\nThe request to fetch DOI '${doi}' timed out. The server may be slow or unresponsive.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error fetching DOI URL: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  /**
    * Download full-text PDF from Wiley and convert to text
    */
   server.tool(
