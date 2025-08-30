@@ -74,8 +74,20 @@ To enable full-text PDF download from Wiley papers, you'll need a Wiley TDM Clie
 - Filter research by publication venues
 - Access open access publications specifically
 
-### 📄 **Full-Text PDF Download**
+### 📄 **Full-Text Access & Download**
 
+#### arXiv Papers
+- Search arXiv repository directly with customizable query parameters
+- Download and extract full-text from arXiv PDFs
+- In-memory PDF processing with automatic text extraction
+- Support for all arXiv paper formats (new style: 2301.12345, old style: hep-ex/0307015)
+
+#### Wiley Papers
 - Download and extract text from Wiley academic papers
-- In-memory PDF processing and text extraction
 - Support for institutional access and open access content
+- Requires Wiley TDM Client Token for full access (see configuration below)
+
+#### DOI Resolution
+- Fetch content from any DOI URL
+- Automatic redirect handling to publisher sites
+- Extract metadata and available content
