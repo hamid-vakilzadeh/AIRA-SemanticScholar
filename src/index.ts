@@ -24,6 +24,56 @@ import { createFilter } from "./lib/api/semanticScholar/filters.js";
 import { Paper, Author } from "./lib/api/semanticScholar/types.js";
 import semanticScholarClient from "./lib/api/semanticScholar/client.js";
 
+// Import and configure pdfjs-dist once
+let pdfjsLib: any = null;
+
+// Initialize pdfjs-dist with proper output suppression
+async function initPdfJs() {
+  if (pdfjsLib) return pdfjsLib;
+
+  // Set up DOM polyfills for Node.js environment
+  const DOMMatrixModule = await import("@thednp/dommatrix");
+  (global as any).DOMMatrix = DOMMatrixModule.default;
+
+  // Ensure Promise.withResolvers is available (polyfill if needed)
+  if (!Promise.withResolvers) {
+    (Promise as any).withResolvers = function () {
+      let resolve, reject;
+      const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
+  }
+
+  // Suppress ALL output during import
+  const originalWarn = console.warn;
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalStdout = process.stdout.write.bind(process.stdout);
+  const originalStderr = process.stderr.write.bind(process.stderr);
+
+  console.warn = () => {};
+  console.log = () => {};
+  console.error = () => {};
+  process.stdout.write = () => true;
+  process.stderr.write = () => true;
+
+  try {
+    pdfjsLib = await import("pdfjs-dist");
+  } finally {
+    // Restore outputs
+    console.warn = originalWarn;
+    console.log = originalLog;
+    console.error = originalError;
+    process.stdout.write = originalStdout;
+    process.stderr.write = originalStderr;
+  }
+
+  return pdfjsLib;
+}
+
 const app = express();
 const PORT = process.env.PORT || 8081;
 
@@ -1209,15 +1259,16 @@ export default function createServer({
         if (doi.includes("dx.doi.org/")) {
           cleanDoi = doi.split("dx.doi.org/").pop() || doi;
         }
-        
+
         // Construct the DOI URL
         const doiUrl = `https://doi.org/${cleanDoi}`;
-        
+
         // Fetch the URL - DOI URLs typically redirect to the publisher's site
         const response = await axios.get(doiUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; MCP-SemanticScholar/1.0)',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            "User-Agent": "Mozilla/5.0 (compatible; MCP-SemanticScholar/1.0)",
+            Accept:
+              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           },
           maxRedirects: 5,
           timeout: 30000, // 30 second timeout
@@ -1225,23 +1276,33 @@ export default function createServer({
         });
 
         // Get the final URL after redirects
-        const finalUrl = response.request?.res?.responseUrl || response.config.url;
-        
+        const finalUrl =
+          response.request?.res?.responseUrl || response.config.url;
+
         // Extract basic information from the HTML
         const htmlContent = response.data;
-        
+
         // Try to extract title
         const titleMatch = htmlContent.match(/<title[^>]*>([^<]+)<\/title>/i);
-        const title = titleMatch ? titleMatch[1].trim() : 'Unknown Title';
-        
+        const title = titleMatch ? titleMatch[1].trim() : "Unknown Title";
+
         // Try to extract meta description
-        const descMatch = htmlContent.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i);
-        const description = descMatch ? descMatch[1].trim() : '';
-        
+        const descMatch = htmlContent.match(
+          /<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i
+        );
+        const description = descMatch ? descMatch[1].trim() : "";
+
         // Try to extract abstract if present
-        const abstractMatch = htmlContent.match(/<(?:div|section)[^>]*(?:class|id)=["'][^"']*abstract[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|section)>/i);
-        const abstract = abstractMatch ? abstractMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-        
+        const abstractMatch = htmlContent.match(
+          /<(?:div|section)[^>]*(?:class|id)=["'][^"']*abstract[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|section)>/i
+        );
+        const abstract = abstractMatch
+          ? abstractMatch[1]
+              .replace(/<[^>]+>/g, " ")
+              .replace(/\s+/g, " ")
+              .trim()
+          : "";
+
         // Construct response
         let responseText = `DOI URL Fetch Results\n`;
         responseText += `===================\n\n`;
@@ -1249,40 +1310,41 @@ export default function createServer({
         responseText += `Original URL: ${doiUrl}\n`;
         responseText += `Final URL: ${finalUrl}\n\n`;
         responseText += `Title: ${title}\n\n`;
-        
+
         if (description) {
           responseText += `Description: ${description}\n\n`;
         }
-        
+
         if (abstract && abstract.length > 50) {
-          responseText += `Abstract:\n${abstract.substring(0, 2000)}${abstract.length > 2000 ? '...' : ''}\n\n`;
+          responseText += `Abstract:\n${abstract.substring(0, 2000)}${
+            abstract.length > 2000 ? "..." : ""
+          }\n\n`;
         }
-        
+
         // Add note about full content
         responseText += `Note: This tool fetches the HTML page from the DOI URL. `;
         responseText += `For full PDF content extraction from Wiley papers, use the 'download-full-paper-wiley' tool instead.\n`;
         responseText += `The page may require institutional access or subscription for full content.\n`;
-        
+
         // If we want to provide more content, we could extract more text
         if (!abstract || abstract.length < 100) {
           // Try to extract main content
           const bodyText = htmlContent
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/\s+/g, ' ')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
             .trim();
-          
+
           if (bodyText.length > 500) {
             responseText += `\nPage Preview (first 1500 characters):\n`;
-            responseText += bodyText.substring(0, 1500) + '...\n';
+            responseText += bodyText.substring(0, 1500) + "...\n";
           }
         }
 
         return {
           content: [{ type: "text", text: responseText }],
         };
-        
       } catch (error) {
         if (axios.isAxiosError(error)) {
           if (error.response?.status === 404) {
@@ -1296,7 +1358,7 @@ export default function createServer({
               isError: true,
             };
           }
-          if (error.code === 'ECONNABORTED') {
+          if (error.code === "ECONNABORTED") {
             return {
               content: [
                 {
@@ -1308,7 +1370,7 @@ export default function createServer({
             };
           }
         }
-        
+
         return {
           content: [
             {
@@ -1380,42 +1442,27 @@ export default function createServer({
 
         // Extract text using pdfjs-dist (Mozilla's PDF.js library)
         try {
-          // Set up DOM polyfills for Node.js environment
-          const DOMMatrixModule = await import("@thednp/dommatrix");
-          (global as any).DOMMatrix = DOMMatrixModule.default;
+          // Get or initialize pdfjs with suppressed output
+          const pdfjs = await initPdfJs();
 
-          // Ensure Promise.withResolvers is available (polyfill if needed)
-          if (!Promise.withResolvers) {
-            (Promise as any).withResolvers = function () {
-              let resolve, reject;
-              const promise = new Promise((res, rej) => {
-                resolve = res;
-                reject = rej;
-              });
-              return { promise, resolve, reject };
-            };
-          }
+          // Suppress warnings during PDF processing
+          const originalWarn = console.warn;
+          const originalLog = console.log;
+          const originalError = console.error;
+          const originalStdout = process.stdout.write.bind(process.stdout);
+          const originalStderr = process.stderr.write.bind(process.stderr);
 
-          // Redirect pdfjs-dist warnings from stdout to stderr
-          const originalWrite = process.stdout.write;
-          process.stdout.write = function (chunk: any) {
-            if (typeof chunk === "string" && chunk.includes("Warning:")) {
-              process.stderr.write(chunk);
-              return true;
-            }
-            return originalWrite.call(process.stdout, chunk);
-          };
-
-          const pdfjsLib = await import("pdfjs-dist");
-
-          // Restore original stdout
-          process.stdout.write = originalWrite;
+          console.warn = () => {};
+          console.log = () => {};
+          console.error = () => {};
+          process.stdout.write = () => true;
+          process.stderr.write = () => true;
 
           // Convert Buffer to Uint8Array as required by pdfjs-dist
           const uint8Array = new Uint8Array(pdfBuffer);
 
           // Load PDF from Uint8Array
-          const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+          const loadingTask = pdfjs.getDocument({ data: uint8Array });
           const pdfDoc = await loadingTask.promise;
 
           let extractedText = "";
@@ -1432,6 +1479,13 @@ export default function createServer({
 
             extractedText += pageText + "\n\n";
           }
+
+          // Restore outputs before processing results
+          console.warn = originalWarn;
+          console.log = originalLog;
+          console.error = originalError;
+          process.stdout.write = originalStdout;
+          process.stderr.write = originalStderr;
 
           // Clean up the extracted text
           const cleanText = extractedText.trim();
@@ -1553,6 +1607,503 @@ export default function createServer({
             {
               type: "text",
               text: `Error downloading paper: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  /**
+   * Search arXiv for papers
+   */
+  server.tool(
+    "search-arxiv",
+    "Search for papers on arXiv using their API",
+    {
+      query: z.string().describe("Search query for arXiv papers"),
+      searchType: z
+        .enum([
+          "all",
+          "title",
+          "author",
+          "abstract",
+          "comment",
+          "journal",
+          "category",
+          "id",
+        ])
+        .optional()
+        .default("all")
+        .describe("Type of search to perform"),
+      maxResults: z
+        .number()
+        .optional()
+        .default(10)
+        .describe("Maximum number of results to return (max 100)"),
+      start: z
+        .number()
+        .optional()
+        .default(0)
+        .describe("Starting index for pagination"),
+      sortBy: z
+        .enum(["relevance", "lastUpdatedDate", "submittedDate"])
+        .optional()
+        .default("relevance")
+        .describe("Sort order for results"),
+      sortOrder: z
+        .enum(["ascending", "descending"])
+        .optional()
+        .default("descending")
+        .describe("Sort direction"),
+    },
+    async ({ query, searchType, maxResults, start, sortBy, sortOrder }) => {
+      try {
+        // Construct the search query based on searchType
+        let searchQuery = "";
+        if (searchType === "id") {
+          // For ID search, use id_list parameter instead
+          searchQuery = "";
+        } else if (searchType === "all") {
+          searchQuery = `all:${query}`;
+        } else {
+          searchQuery = `${searchType}:${query}`;
+        }
+
+        // Build the API URL
+        const baseUrl = "http://export.arxiv.org/api/query";
+        const params = new URLSearchParams();
+
+        if (searchType === "id") {
+          params.append("id_list", query);
+        } else {
+          params.append("search_query", searchQuery);
+        }
+
+        params.append("start", start.toString());
+        params.append("max_results", Math.min(maxResults, 100).toString());
+
+        // Add sorting parameters
+        if (sortBy !== "relevance") {
+          params.append("sortBy", sortBy);
+          params.append("sortOrder", sortOrder);
+        }
+
+        const url = `${baseUrl}?${params.toString()}`;
+
+        // Make the API request
+        const response = await axios.get(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; MCP-SemanticScholar/1.0)",
+          },
+          timeout: 30000,
+        });
+
+        // Parse the Atom feed response
+        const feedData = response.data;
+
+        // Extract total results count
+        const totalMatch = feedData.match(
+          /<opensearch:totalResults>(\d+)<\/opensearch:totalResults>/
+        );
+        const totalResults = totalMatch ? parseInt(totalMatch[1]) : 0;
+
+        // Extract entries using regex
+        const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+        const entries = [];
+        let match;
+
+        while ((match = entryRegex.exec(feedData)) !== null) {
+          const entryXml = match[1];
+
+          // Extract paper information
+          const idMatch = entryXml.match(/<id>([^<]+)<\/id>/);
+          const titleMatch = entryXml.match(/<title>([^<]+)<\/title>/);
+          const summaryMatch = entryXml.match(/<summary>([\s\S]*?)<\/summary>/);
+          const publishedMatch = entryXml.match(
+            /<published>([^<]+)<\/published>/
+          );
+          const updatedMatch = entryXml.match(/<updated>([^<]+)<\/updated>/);
+
+          // Extract authors
+          const authorRegex = /<author>\s*<name>([^<]+)<\/name>/g;
+          const authors = [];
+          let authorMatch;
+          while ((authorMatch = authorRegex.exec(entryXml)) !== null) {
+            authors.push(authorMatch[1].trim());
+          }
+
+          // Extract categories
+          const categoryRegex = /<category[^>]*term="([^"]+)"/g;
+          const categories = [];
+          let categoryMatch;
+          while ((categoryMatch = categoryRegex.exec(entryXml)) !== null) {
+            categories.push(categoryMatch[1]);
+          }
+
+          // Extract primary category
+          const primaryCategoryMatch = entryXml.match(
+            /<arxiv:primary_category[^>]*term="([^"]+)"/
+          );
+
+          // Extract comment if exists
+          const commentMatch = entryXml.match(
+            /<arxiv:comment[^>]*>([\s\S]*?)<\/arxiv:comment>/
+          );
+
+          // Extract journal reference if exists
+          const journalMatch = entryXml.match(
+            /<arxiv:journal_ref[^>]*>([\s\S]*?)<\/arxiv:journal_ref>/
+          );
+
+          // Extract DOI if exists
+          const doiMatch = entryXml.match(
+            /<arxiv:doi[^>]*>([\s\S]*?)<\/arxiv:doi>/
+          );
+
+          // Extract PDF link
+          const pdfMatch = entryXml.match(
+            /<link[^>]*title="pdf"[^>]*href="([^"]+)"/
+          );
+
+          // Clean up the abstract
+          const abstractText = summaryMatch
+            ? summaryMatch[1]
+                .replace(/\s+/g, " ")
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&amp;/g, "&")
+                .trim()
+            : "";
+
+          // Extract arXiv ID from the URL
+          const arxivId = idMatch ? idMatch[1].split("/abs/").pop() : "";
+
+          // Create clean paper object
+          const paper = {
+            arxivId: arxivId,
+            title: titleMatch ? titleMatch[1].trim() : "",
+            authors: authors,
+            abstract: abstractText,
+            categories: categories,
+            primaryCategory: primaryCategoryMatch
+              ? primaryCategoryMatch[1]
+              : categories[0] || "",
+            published: publishedMatch ? publishedMatch[1] : "",
+            updated: updatedMatch ? updatedMatch[1] : "",
+            doi: doiMatch ? doiMatch[1].trim() : null,
+            journalRef: journalMatch ? journalMatch[1].trim() : null,
+            comment: commentMatch ? commentMatch[1].trim() : null,
+            pdfUrl: pdfMatch ? pdfMatch[1] : `https://arxiv.org/pdf/${arxivId}`,
+            abstractUrl: idMatch ? idMatch[1] : "",
+          };
+
+          entries.push(paper);
+        }
+
+        // Create response object
+        const result = {
+          query: query,
+          searchType: searchType,
+          totalResults: totalResults,
+          startIndex: start,
+          itemsPerPage: entries.length,
+          papers: entries,
+        };
+
+        // Format response for display
+        let responseText = `arXiv Search Results\n`;
+        responseText += `===================\n\n`;
+        responseText += `Query: "${query}" (${searchType})\n`;
+        responseText += `Total Results: ${totalResults}\n`;
+        responseText += `Showing: ${start + 1}-${
+          start + entries.length
+        } of ${totalResults}\n\n`;
+
+        if (entries.length === 0) {
+          responseText += "No papers found matching your query.\n";
+        } else {
+          entries.forEach((paper, index) => {
+            responseText += `${start + index + 1}. ${paper.title}\n`;
+            responseText += `   arXiv ID: ${paper.arxivId}\n`;
+            responseText += `   Authors: ${paper.authors.join(", ")}\n`;
+            responseText += `   Categories: ${paper.categories.join(", ")}\n`;
+            responseText += `   Published: ${new Date(
+              paper.published
+            ).toLocaleDateString()}\n`;
+            if (paper.updated !== paper.published) {
+              responseText += `   Updated: ${new Date(
+                paper.updated
+              ).toLocaleDateString()}\n`;
+            }
+            if (paper.doi) {
+              responseText += `   DOI: ${paper.doi}\n`;
+            }
+            if (paper.journalRef) {
+              responseText += `   Journal: ${paper.journalRef}\n`;
+            }
+            responseText += `   PDF: ${paper.pdfUrl}\n`;
+            responseText += `   URL: ${paper.abstractUrl}\n`;
+            if (paper.abstract) {
+              responseText += `   Abstract: ${paper.abstract.substring(
+                0,
+                200
+              )}${paper.abstract.length > 200 ? "..." : ""}\n`;
+            }
+            responseText += "\n";
+          });
+
+          if (totalResults > start + entries.length) {
+            responseText += `\nTo see more results, use start=${
+              start + entries.length
+            } in your next query.`;
+          }
+        }
+
+        // Also return the structured data as JSON for programmatic use
+        return {
+          content: [
+            {
+              type: "text",
+              text: responseText,
+            },
+          ],
+          // Include structured data for potential future use
+          metadata: result,
+        };
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 400) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error 400: Bad Request\n\nThe arXiv API returned an error. This usually means the search query was malformed.\nPlease check your query syntax and try again.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (error.code === "ECONNABORTED") {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: Request timeout\n\nThe request to arXiv API timed out. Please try again with fewer results or a simpler query.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error searching arXiv: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  /**
+   * Download full-text PDF from arXiv and convert to text
+   */
+  server.tool(
+    "download-full-paper-arxiv",
+    "Download full-text PDF of an arXiv paper and extract text content (memory only)",
+    {
+      arxivId: z
+        .string()
+        .describe(
+          "arXiv ID of the paper to download (e.g., 2301.12345, hep-ex/0307015, or with version 2301.12345v2)"
+        ),
+    },
+    async ({ arxivId }) => {
+      try {
+        // Clean the arXiv ID - remove any URL prefixes if present
+        let cleanId = arxivId;
+        if (arxivId.includes("arxiv.org/abs/")) {
+          cleanId = arxivId.split("arxiv.org/abs/").pop() || arxivId;
+        }
+        if (arxivId.includes("arxiv.org/pdf/")) {
+          cleanId = arxivId.split("arxiv.org/pdf/").pop() || arxivId;
+        }
+        // Remove .pdf extension if present
+        if (cleanId.endsWith(".pdf")) {
+          cleanId = cleanId.slice(0, -4);
+        }
+
+        // Construct the PDF URL using export.arxiv.org for programmatic access
+        const downloadUrl = `https://export.arxiv.org/pdf/${cleanId}`;
+
+        // Download the PDF - arXiv recommends 4 requests per second max
+        const response = await axios.get(downloadUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; MCP-SemanticScholar/1.0)",
+            Accept: "application/pdf",
+          },
+          responseType: "arraybuffer",
+          maxRedirects: 5,
+          timeout: 60000, // 60 second timeout for large files
+        });
+
+        // Buffer the entire response in memory
+        const pdfBuffer = Buffer.from(response.data);
+
+        // Extract text using pdfjs-dist (Mozilla's PDF.js library)
+        try {
+          // Get or initialize pdfjs with suppressed output
+          const pdfjs = await initPdfJs();
+
+          // Suppress warnings during PDF processing
+          const originalWarn = console.warn;
+          const originalLog = console.log;
+          const originalError = console.error;
+          const originalStdout = process.stdout.write.bind(process.stdout);
+          const originalStderr = process.stderr.write.bind(process.stderr);
+
+          console.warn = () => {};
+          console.log = () => {};
+          console.error = () => {};
+          process.stdout.write = () => true;
+          process.stderr.write = () => true;
+
+          // Convert Buffer to Uint8Array as required by pdfjs-dist
+          const uint8Array = new Uint8Array(pdfBuffer);
+
+          // Load PDF from Uint8Array
+          const loadingTask = pdfjs.getDocument({ data: uint8Array });
+          const pdfDoc = await loadingTask.promise;
+
+          let extractedText = "";
+
+          // Extract text from all pages
+          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum);
+            const textContent = await page.getTextContent();
+
+            // Combine text items from the page
+            const pageText = textContent.items
+              .map((item: any) => item.str)
+              .join(" ");
+
+            extractedText += pageText + "\n\n";
+          }
+
+          // Restore outputs before processing results
+          console.warn = originalWarn;
+          console.log = originalLog;
+          console.error = originalError;
+          process.stdout.write = originalStdout;
+          process.stderr.write = originalStderr;
+
+          // Clean up the extracted text
+          const cleanText = extractedText.trim();
+
+          if (!cleanText || cleanText.length < 50) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `PDF downloaded successfully but contains minimal text content.\n` +
+                    `This may be a scanned PDF or contain mostly images.\n` +
+                    `Extracted content length: ${cleanText.length} characters`,
+                },
+              ],
+            };
+          }
+
+          // Return the extracted text with arXiv info
+          return {
+            content: [
+              {
+                type: "text",
+                text: `arXiv Paper ID: ${cleanId}\nSource: ${downloadUrl}\n\n${cleanText}`,
+              },
+            ],
+          };
+        } catch (parseError) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `PDF download succeeded but text extraction failed.\n` +
+                  `Error: ${
+                    parseError instanceof Error
+                      ? parseError.message
+                      : String(parseError)
+                  }`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      } catch (error) {
+        // Handle specific arXiv errors
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 404) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    `Error 404: arXiv paper not found\n\n` +
+                    `The arXiv ID '${arxivId}' could not be found.\n` +
+                    `Please check:\n` +
+                    `- The ID format is correct (e.g., 2301.12345 or hep-ex/0307015)\n` +
+                    `- The paper exists on arXiv\n` +
+                    `- Try without version suffix if you included one (e.g., use 2301.12345 instead of 2301.12345v2)`,
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (error.response?.status === 429) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Error 429: Rate limit exceeded\n\n" +
+                    "arXiv rate limits:\n" +
+                    "- Maximum 4 requests per second\n" +
+                    "- Use export.arxiv.org for programmatic access\n\n" +
+                    "Please wait a moment before making additional requests.",
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (error.code === "ECONNABORTED") {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error: Request timeout\n\nThe request to download arXiv paper '${arxivId}' timed out. The file may be very large or the server may be slow.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error downloading arXiv paper: ${
                 error instanceof Error ? error.message : String(error)
               }`,
             },
