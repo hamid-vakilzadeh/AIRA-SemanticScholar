@@ -4,12 +4,14 @@ dotenv.config();
 
 import express, { Request, Response } from "express";
 import cors from "cors";
+import { randomUUID } from "node:crypto";
 import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import axios from "axios";
 import {
@@ -139,37 +141,67 @@ export default function createServer({
     name: "AI Research Assistant",
     version: "1.0.0",
     capabilities: {
-      resources: {},
       tools: {},
-      prompts: {},
       logging: {},
     },
   });
 
   /**
-   * Error logging helper that sends error notifications through MCP protocol
-   * Falls back to console.error if server is not ready or logging is not supported
+   * Enhanced logging system that uses MCP logging capabilities when available
+   * Falls back to console logging if server is not ready or logging is not supported
    */
   const logError = (message: string, data?: any) => {
     try {
-      // Check if the server has logging capability enabled
-      // The SDK will throw if logging is not supported or server not initialized
-      server.server.notification({
-        method: "notifications/message",
-        params: {
-          level: "error",
-          logger: "semantic-scholar",
-          data: {
-            message,
-            ...(data && { details: data }),
-          },
+      // Try to send a proper MCP logging message
+      server.sendLoggingMessage({
+        level: "error",
+        logger: "semantic-scholar",
+        data: {
+          message,
+          timestamp: new Date().toISOString(),
+          ...(data && { details: data }),
         },
       });
     } catch (err) {
-      // Fallback to console.error if server not ready or logging not supported
-      // This is expected during initialization or when client doesn't support logging
+      // Fallback to console logging if MCP logging not supported
       if (config.debug) {
-        console.error(`[MCP Error] ${message}`, data);
+        console.error(`[MCP ERROR] ${message}`, data);
+      }
+    }
+  };
+
+  const logWarning = (message: string, data?: any) => {
+    try {
+      server.sendLoggingMessage({
+        level: "warning",
+        logger: "semantic-scholar",
+        data: {
+          message,
+          timestamp: new Date().toISOString(),
+          ...(data && { details: data }),
+        },
+      });
+    } catch (err) {
+      if (config.debug) {
+        console.warn(`[MCP WARNING] ${message}`, data);
+      }
+    }
+  };
+
+  const logInfo = (message: string, data?: any) => {
+    try {
+      server.sendLoggingMessage({
+        level: "info",
+        logger: "semantic-scholar",
+        data: {
+          message,
+          timestamp: new Date().toISOString(),
+          ...(data && { details: data }),
+        },
+      });
+    } catch (err) {
+      if (config.debug) {
+        console.log(`[MCP INFO] ${message}`, data);
       }
     }
   };
@@ -262,16 +294,19 @@ export default function createServer({
   /**
    * Basic paper search with just a query and limit
    */
-  server.tool(
+  server.registerTool(
     "papers-search-basic",
-    "Search for academic papers with a simple query.",
     {
-      query: z.string().describe("Search query for papers"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return"),
+      title: "Basic papers search",
+      description: "Search for academic papers with a simple query.",
+      inputSchema: {
+        query: z.string().describe("Search query for papers"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return"),
+      },
     },
     async ({ query, limit }) => {
       try {
@@ -364,50 +399,53 @@ export default function createServer({
   /**
    * Advanced paper search with multiple filters
    */
-  server.tool(
-    "papers-search-advanced",
-    "Search for academic papers with advanced filtering options",
+  server.registerTool(
+    "paper-search-advanced",
     {
-      query: z.string().describe("Search query for papers"),
-      yearStart: z
-        .number()
-        .optional()
-        .describe("Starting year for filtering (inclusive)"),
-      yearEnd: z
-        .number()
-        .optional()
-        .describe("Ending year for filtering (inclusive)"),
-      minCitations: z
-        .number()
-        .optional()
-        .describe("Minimum number of citations"),
-      openAccessOnly: z
-        .boolean()
-        .optional()
-        .describe("Only include open access papers"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return"),
-      fieldsOfStudy: z
-        .array(z.string())
-        .optional()
-        .describe("Fields of study to filter by"),
-      publicationTypes: z
-        .array(z.string())
-        .optional()
-        .describe("Publication types to filter by"),
-      sortBy: z
-        .enum(["relevance", "citationCount", "year"])
-        .optional()
-        .default("relevance")
-        .describe("Field to sort by"),
-      sortOrder: z
-        .enum(["asc", "desc"])
-        .optional()
-        .default("desc")
-        .describe("Sort order"),
+      title: "Advanced paper search",
+      description: "Search for academic papers with advanced filtering options",
+      inputSchema: {
+        query: z.string().describe("Search query for papers"),
+        yearStart: z
+          .number()
+          .optional()
+          .describe("Starting year for filtering (inclusive)"),
+        yearEnd: z
+          .number()
+          .optional()
+          .describe("Ending year for filtering (inclusive)"),
+        minCitations: z
+          .number()
+          .optional()
+          .describe("Minimum number of citations"),
+        openAccessOnly: z
+          .boolean()
+          .optional()
+          .describe("Only include open access papers"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return"),
+        fieldsOfStudy: z
+          .array(z.string())
+          .optional()
+          .describe("Fields of study to filter by"),
+        publicationTypes: z
+          .array(z.string())
+          .optional()
+          .describe("Publication types to filter by"),
+        sortBy: z
+          .enum(["relevance", "citationCount", "year"])
+          .optional()
+          .default("relevance")
+          .describe("Field to sort by"),
+        sortOrder: z
+          .enum(["asc", "desc"])
+          .optional()
+          .default("desc")
+          .describe("Sort order"),
+      },
     },
     async ({
       query,
@@ -420,6 +458,17 @@ export default function createServer({
       publicationTypes,
       sortBy,
       sortOrder,
+    }: {
+      query: string;
+      yearStart?: number;
+      yearEnd?: number;
+      minCitations?: number;
+      openAccessOnly?: boolean;
+      limit?: number;
+      fieldsOfStudy?: string[];
+      publicationTypes?: string[];
+      sortBy?: "relevance" | "citationCount" | "year";
+      sortOrder?: "asc" | "desc";
     }) => {
       try {
         const filter = createFilter(query)
@@ -538,27 +587,30 @@ export default function createServer({
   /**
    * Find a paper by closest title match
    */
-  server.tool(
+  server.registerTool(
     "search-paper-title",
-    "Find a paper by closest title match",
     {
-      title: z.string().describe("Paper title to match"),
-      yearStart: z
-        .number()
-        .optional()
-        .describe("Starting year for filtering (inclusive)"),
-      yearEnd: z
-        .number()
-        .optional()
-        .describe("Ending year for filtering (inclusive)"),
-      minCitations: z
-        .number()
-        .optional()
-        .describe("Minimum number of citations"),
-      openAccessOnly: z
-        .boolean()
-        .optional()
-        .describe("Only include open access papers"),
+      title: "search paper by title",
+      description: "Find a paper by closest title match",
+      inputSchema: {
+        title: z.string().describe("Paper title to match"),
+        yearStart: z
+          .number()
+          .optional()
+          .describe("Starting year for filtering (inclusive)"),
+        yearEnd: z
+          .number()
+          .optional()
+          .describe("Ending year for filtering (inclusive)"),
+        minCitations: z
+          .number()
+          .optional()
+          .describe("Minimum number of citations"),
+        openAccessOnly: z
+          .boolean()
+          .optional()
+          .describe("Only include open access papers"),
+      },
     },
     async ({
       title,
@@ -647,13 +699,17 @@ export default function createServer({
   /**
    * Get detailed information about a specific paper
    */
-  server.tool(
+  server.registerTool(
     "get-paper-abstract",
-    "Get detailed information about a specific paper including its abstract",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+      title: "get paper abstract",
+      description:
+        "Get detailed information about a specific paper including its abstract",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+      },
     },
     async ({ paperId }) => {
       try {
@@ -686,23 +742,26 @@ export default function createServer({
   /**
    * Get papers that cite a specific paper
    */
-  server.tool(
+  server.registerTool(
     "papers-citations",
-    "Get papers that cite a specific paper",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of citations to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Get papers that cite a specific paper",
+      description: "Get papers that cite a specific paper",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of citations to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ paperId, limit, offset }) => {
       try {
@@ -780,23 +839,26 @@ export default function createServer({
   /**
    * Get papers cited by a specific paper
    */
-  server.tool(
+  server.registerTool(
     "papers-references",
-    "Get papers cited by a specific paper",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of references to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Get papers cited by a specific paper",
+      description: "Get papers cited by a specific paper",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of references to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ paperId, limit, offset }) => {
       try {
@@ -874,21 +936,24 @@ export default function createServer({
   /**
    * Search for authors by name or affiliation
    */
-  server.tool(
+  server.registerTool(
     "authors-search",
-    "Search for authors by name or affiliation",
     {
-      query: z.string().describe("Search query for authors"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Search for authors by name or affiliation",
+      description: "Search for authors by name or affiliation",
+      inputSchema: {
+        query: z.string().describe("Search query for authors"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ query, limit, offset }) => {
       try {
@@ -966,21 +1031,24 @@ export default function createServer({
   /**
    * Get papers written by a specific author
    */
-  server.tool(
+  server.registerTool(
     "authors-papers",
-    "Get papers written by a specific author",
     {
-      authorId: z.string().describe("Author ID"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of papers to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Get papers written by a specific author",
+      description: "Get papers written by a specific author",
+      inputSchema: {
+        authorId: z.string().describe("Author ID"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of papers to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ authorId, limit, offset }) => {
       try {
@@ -1057,15 +1125,18 @@ export default function createServer({
   /**
    * Look up multiple papers by their IDs
    */
-  server.tool(
+  server.registerTool(
     "papers-batch",
-    "Look up multiple papers by their IDs",
     {
-      paperIds: z
-        .array(z.string())
-        .describe(
-          "Array of paper IDs (Semantic Scholar IDs, arXiv IDs, DOIs, etc.)"
-        ),
+      title: "Look up multiple papers by their IDs",
+      description: "Look up multiple papers by their IDs",
+      inputSchema: {
+        paperIds: z
+          .array(z.string())
+          .describe(
+            "Array of paper IDs (Semantic Scholar IDs, arXiv IDs, DOIs, etc.)"
+          ),
+      },
     },
     async ({ paperIds }) => {
       try {
@@ -1152,15 +1223,19 @@ export default function createServer({
   /**
    * Fetch any DOI URL and return the page content
    */
-  server.tool(
+  server.registerTool(
     "fetch-doi-url",
-    "Fetch content from a DOI URL by constructing the URL from a DOI",
     {
-      doi: z
-        .string()
-        .describe(
-          "DOI identifier (e.g., 10.1016/j.aos.2025.101608 or just the DOI without URL)"
-        ),
+      title: "Fetch content from a DOI URL",
+      description:
+        "Fetch content from a DOI URL by constructing the URL from a DOI",
+      inputSchema: {
+        doi: z
+          .string()
+          .describe(
+            "DOI identifier (e.g., 10.1016/j.aos.2025.101608 or just the DOI without URL)"
+          ),
+      },
     },
     async ({ doi }) => {
       try {
@@ -1305,15 +1380,19 @@ export default function createServer({
   /**
    * Download full-text PDF from Wiley and convert to text
    */
-  server.tool(
+  server.registerTool(
     "download-full-paper-wiley",
-    "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
     {
-      doi: z
-        .string()
-        .describe(
-          "DOI of the paper to download (e.g., 10.1111/1467-923X.12168)"
-        ),
+      title: "Download full-text PDF from Wiley",
+      description:
+        "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
+      inputSchema: {
+        doi: z
+          .string()
+          .describe(
+            "DOI of the paper to download (e.g., 10.1111/1467-923X.12168)"
+          ),
+      },
     },
     async ({ doi }) => {
       try {
@@ -1543,45 +1622,48 @@ export default function createServer({
   /**
    * Search arXiv for papers
    */
-  server.tool(
+  server.registerTool(
     "search-arxiv",
-    "Search for papers on arXiv using their API",
     {
-      query: z.string().describe("Search query for arXiv papers"),
-      searchType: z
-        .enum([
-          "all",
-          "title",
-          "author",
-          "abstract",
-          "comment",
-          "journal",
-          "category",
-          "id",
-        ])
-        .optional()
-        .default("all")
-        .describe("Type of search to perform"),
-      maxResults: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return (max 100)"),
-      start: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Starting index for pagination"),
-      sortBy: z
-        .enum(["relevance", "lastUpdatedDate", "submittedDate"])
-        .optional()
-        .default("relevance")
-        .describe("Sort order for results"),
-      sortOrder: z
-        .enum(["ascending", "descending"])
-        .optional()
-        .default("descending")
-        .describe("Sort direction"),
+      title: "Search arXiv for papers",
+      description: "Search for papers on arXiv using their API",
+      inputSchema: {
+        query: z.string().describe("Search query for arXiv papers"),
+        searchType: z
+          .enum([
+            "all",
+            "title",
+            "author",
+            "abstract",
+            "comment",
+            "journal",
+            "category",
+            "id",
+          ])
+          .optional()
+          .default("all")
+          .describe("Type of search to perform"),
+        maxResults: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return (max 100)"),
+        start: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Starting index for pagination"),
+        sortBy: z
+          .enum(["relevance", "lastUpdatedDate", "submittedDate"])
+          .optional()
+          .default("relevance")
+          .describe("Sort order for results"),
+        sortOrder: z
+          .enum(["ascending", "descending"])
+          .optional()
+          .default("descending")
+          .describe("Sort direction"),
+      },
     },
     async ({ query, searchType, maxResults, start, sortBy, sortOrder }) => {
       try {
@@ -1844,15 +1926,19 @@ export default function createServer({
   /**
    * Download full-text PDF from arXiv and convert to text
    */
-  server.tool(
+  server.registerTool(
     "download-full-paper-arxiv",
-    "Download full-text PDF of an arXiv paper and extract text content (memory only)",
     {
-      arxivId: z
-        .string()
-        .describe(
-          "arXiv ID of the paper to download (e.g., 2301.12345, hep-ex/0307015, or with version 2301.12345v2)"
-        ),
+      title: "Download full-text PDF from arXiv",
+      description:
+        "Download full-text PDF of an arXiv paper and extract text content (memory only)",
+      inputSchema: {
+        arxivId: z
+          .string()
+          .describe(
+            "arXiv ID of the paper to download (e.g., 2301.12345, hep-ex/0307015, or with version 2301.12345v2)"
+          ),
+      },
     },
     async ({ arxivId }) => {
       try {
@@ -2057,27 +2143,30 @@ export default function createServer({
   /**
    * Analyze the citation network for a specific paper
    */
-  server.tool(
+  server.registerTool(
     "analysis-citation-network",
-    "Analyze the citation network for a specific paper",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
-      depth: z
-        .string()
-        .optional()
-        .describe("Depth of citation network (1 or 2)"),
-      citationsLimit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of citations to analyze per paper"),
-      referencesLimit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of references to analyze per paper"),
+      title: "Analyze citation network",
+      description: "Analyze the citation network for a specific paper",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+        depth: z
+          .string()
+          .optional()
+          .describe("Depth of citation network (1 or 2)"),
+        citationsLimit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of citations to analyze per paper"),
+        referencesLimit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of references to analyze per paper"),
+      },
     },
     async ({ paperId, depth, citationsLimit, referencesLimit }) => {
       try {
@@ -2298,48 +2387,81 @@ export default function createServer({
     }
   );
 
-  return server.server;
+  return server;
 }
 
-// Handle MCP requests at /mcp endpoint
-app.all("/mcp", async (req: Request, res: Response) => {
-  try {
-    // Parse configuration from HTTP request
-    const rawConfig = parseConfig(req);
+// Map to store transports by session ID
+const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
-    // Parse and validate configuration with schema
-    const config = configSchema.parse({
-      SEMANTIC_SCHOLAR_API_KEY:
-        rawConfig.SEMANTIC_SCHOLAR_API_KEY ||
-        process.env.SEMANTIC_SCHOLAR_API_KEY ||
-        undefined,
-      WILEY_TDM_CLIENT_TOKEN:
-        rawConfig.WILEY_TDM_CLIENT_TOKEN ||
-        process.env.WILEY_TDM_CLIENT_TOKEN ||
-        undefined,
-      debug: rawConfig.debug || false,
-    });
-    // Set API key on the semantic scholar client
-    if (config.SEMANTIC_SCHOLAR_API_KEY) {
-      semanticScholarClient.defaults.headers.common["x-api-key"] =
-        config.SEMANTIC_SCHOLAR_API_KEY;
+// Handle POST requests for client-to-server communication
+app.post("/mcp", async (req: Request, res: Response) => {
+  try {
+    // Check for existing session ID
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    let transport: StreamableHTTPServerTransport;
+
+    if (sessionId && transports[sessionId]) {
+      // Reuse existing transport
+      transport = transports[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      // New initialization request
+      // Parse configuration from HTTP request
+      const rawConfig = parseConfig(req);
+
+      // Parse and validate configuration with schema
+      const config = configSchema.parse({
+        SEMANTIC_SCHOLAR_API_KEY:
+          rawConfig.SEMANTIC_SCHOLAR_API_KEY ||
+          process.env.SEMANTIC_SCHOLAR_API_KEY ||
+          undefined,
+        WILEY_TDM_CLIENT_TOKEN:
+          rawConfig.WILEY_TDM_CLIENT_TOKEN ||
+          process.env.WILEY_TDM_CLIENT_TOKEN ||
+          undefined,
+        debug: rawConfig.debug || false,
+      });
+
+      // Set API key on the semantic scholar client
+      if (config.SEMANTIC_SCHOLAR_API_KEY) {
+        semanticScholarClient.defaults.headers.common["x-api-key"] =
+          config.SEMANTIC_SCHOLAR_API_KEY;
+      }
+
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId) => {
+          // Store the transport by session ID
+          transports[sessionId] = transport;
+        },
+      });
+
+      // Clean up transport when closed
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          delete transports[transport.sessionId];
+        }
+      };
+
+      const server = createServer({ config });
+
+      // Connect to the MCP server
+      await server.connect(transport);
+    } else {
+      // Invalid request
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Bad Request: No valid session ID provided",
+        },
+        id: null,
+      });
+      return;
     }
 
-    const server = createServer({ config });
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-
-    // Clean up on request close
-    res.on("close", () => {
-      transport.close();
-      server.close();
-    });
-
-    await server.connect(transport);
+    // Handle the request
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
-    // Note: logError not available here as it's outside server context
     console.error("Error handling MCP request:", error);
     if (!res.headersSent) {
       res.status(500).json({
@@ -2351,29 +2473,30 @@ app.all("/mcp", async (req: Request, res: Response) => {
   }
 });
 
-// Main function to start the server in the appropriate mode
-async function main() {
-  const transport = process.env.TRANSPORT || "stdio";
-
-  if (transport === "http") {
-    // Run in HTTP mode
-    app.listen(PORT, () => {
-      console.log(`MCP HTTP Server listening on port ${PORT}`);
-    });
-  } else {
-    // Optional: backward compatibility with STDIO transport
-    const config = configSchema.parse({
-      SEMANTIC_SCHOLAR_API_KEY:
-        process.env.SEMANTIC_SCHOLAR_API_KEY || undefined,
-      WILEY_TDM_CLIENT_TOKEN: process.env.WILEY_TDM_CLIENT_TOKEN || undefined,
-      debug: process.env.DEBUG === "true" || false,
-    });
-
-    const server = createServer({ config });
-    const stdioTransport = new StdioServerTransport();
-    await server.connect(stdioTransport);
-    console.error("MCP Server running in stdio mode");
+// Reusable handler for GET and DELETE requests
+const handleSessionRequest = async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send("Invalid or missing session ID");
+    return;
   }
+
+  const transport = transports[sessionId];
+  await transport.handleRequest(req, res);
+};
+
+// Handle GET requests for server-to-client notifications via SSE
+app.get("/mcp", handleSessionRequest);
+
+// Handle DELETE requests for session termination
+app.delete("/mcp", handleSessionRequest);
+
+// Main function to start the server in HTTP mode
+async function main() {
+  // Run in HTTP mode
+  app.listen(PORT, () => {
+    console.log(`MCP HTTP Server listening on port ${PORT}`);
+  });
 }
 
 // Start the server
