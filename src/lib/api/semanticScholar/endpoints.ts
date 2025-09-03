@@ -78,6 +78,16 @@ export const searchPapers = async (
           "Rate limit exceeded (1 request/second for /paper/search). Please try again later."
         );
       }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
+        );
+      }
       if (error.response?.status === 400) {
         const errorMsg =
           error.response.data.error || "Invalid search parameters";
@@ -115,6 +125,16 @@ export const searchPapersBulk = async (
       if (error.response?.status === 429) {
         throw new Error(
           "Rate limit exceeded (10 requests/second). Please try again later."
+        );
+      }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
         );
       }
       if (error.response?.status === 400) {
@@ -185,6 +205,16 @@ export const matchPaper = async (
       if (error.response?.status === 429) {
         throw new Error(
           "Rate limit exceeded for paper match endpoint. Please try again later."
+        );
+      }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
         );
       }
       if (error.response?.status === 400) {
@@ -275,6 +305,16 @@ export const getPaper = async ({
       if (error.response?.status === 429) {
         throw new Error(
           "Rate limit exceeded for paper endpoint. Please try again later."
+        );
+      }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
         );
       }
       if (error.response?.status === 400) {
@@ -374,6 +414,16 @@ export const getPaperCitations = async (
           "Rate limit exceeded for citations endpoint. Please try again later."
         );
       }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
+        );
+      }
       if (error.response?.status === 400) {
         const errorMsg =
           error.response.data.error || "Invalid citation parameters";
@@ -471,6 +521,16 @@ export const getPaperReferences = async (
           "Rate limit exceeded for references endpoint. Please try again later."
         );
       }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
+        );
+      }
       if (error.response?.status === 400) {
         const errorMsg =
           error.response.data.error || "Invalid reference parameters";
@@ -548,6 +608,16 @@ export const getPapersBatch = async ({
       if (error.response?.status === 429) {
         throw new Error(
           "Rate limit exceeded (1 request/second for /paper/batch). Please try again later."
+        );
+      }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
         );
       }
       if (error.response?.status === 400) {
@@ -670,6 +740,16 @@ export const searchAuthors = async (
           "Rate limit exceeded (10 requests/second). Please try again later."
         );
       }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
+        );
+      }
       if (error.response?.status === 400) {
         const errorMsg =
           error.response.data.error || "Invalid search parameters";
@@ -765,6 +845,16 @@ export const getAuthor = async ({
       if (error.response?.status === 429) {
         throw new Error(
           "Rate limit exceeded for author endpoint. Please try again later."
+        );
+      }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
         );
       }
       if (error.response?.status === 400) {
@@ -869,6 +959,16 @@ export const getAuthorPapers = async (
           "Rate limit exceeded for author papers endpoint. Please try again later."
         );
       }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
+        );
+      }
       if (error.response?.status === 400) {
         const errorMsg =
           error.response.data.error || "Invalid author papers parameters";
@@ -959,6 +1059,16 @@ export const getAuthorsBatch = async ({
       if (error.response?.status === 429) {
         throw new Error(
           "Rate limit exceeded for /author/batch. Please try again later."
+        );
+      }
+      if (error.response?.status === 403) {
+        throw new Error(
+          "403 Forbidden: Invalid or missing Semantic Scholar API key. Please check your SEMANTIC_SCHOLAR_API_KEY configuration."
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new Error(
+          "401 Unauthorized: Authentication failed. Please verify your Semantic Scholar API key."
         );
       }
       if (error.response?.status === 400) {

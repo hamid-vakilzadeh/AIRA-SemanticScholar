@@ -31,11 +31,12 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.3",
+    "@modelcontextprotocol/sdk": "^1.17.5",
     "@tanstack/react-query": "^5.69.0",
     "@thednp/dommatrix": "^2.0.12",
     "axios": "^1.8.4",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
     "express": "^4.18.0",
     "pdfjs-dist": "^5.4.54",
     "zod": "^3.24.2"

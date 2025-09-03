@@ -1,12 +1,17 @@
 #!/usr/bin/env node
+import dotenv from "dotenv";
+dotenv.config();
+
 import express, { Request, Response } from "express";
 import cors from "cors";
+import { randomUUID } from "node:crypto";
 import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import axios from "axios";
 import {
@@ -119,7 +124,7 @@ function parseConfig(req: Request): any {
       return parsedConfig;
     }
 
-    console.log("No config parameter found in HTTP request");
+    // No config parameter found, will use environment variables
     return {};
   } catch (error) {
     console.error("Error parsing config from HTTP request:", error);
@@ -136,11 +141,70 @@ export default function createServer({
     name: "AI Research Assistant",
     version: "1.0.0",
     capabilities: {
-      resources: {},
       tools: {},
-      prompts: {},
+      logging: {},
     },
   });
+
+  /**
+   * Enhanced logging system that uses MCP logging capabilities when available
+   * Falls back to console logging if server is not ready or logging is not supported
+   */
+  const logError = (message: string, data?: any) => {
+    try {
+      // Try to send a proper MCP logging message
+      server.sendLoggingMessage({
+        level: "error",
+        logger: "semantic-scholar",
+        data: {
+          message,
+          timestamp: new Date().toISOString(),
+          ...(data && { details: data }),
+        },
+      });
+    } catch (err) {
+      // Fallback to console logging if MCP logging not supported
+      if (config.debug) {
+        console.error(`[MCP ERROR] ${message}`, data);
+      }
+    }
+  };
+
+  const logWarning = (message: string, data?: any) => {
+    try {
+      server.sendLoggingMessage({
+        level: "warning",
+        logger: "semantic-scholar",
+        data: {
+          message,
+          timestamp: new Date().toISOString(),
+          ...(data && { details: data }),
+        },
+      });
+    } catch (err) {
+      if (config.debug) {
+        console.warn(`[MCP WARNING] ${message}`, data);
+      }
+    }
+  };
+
+  const logInfo = (message: string, data?: any) => {
+    try {
+      server.sendLoggingMessage({
+        level: "info",
+        logger: "semantic-scholar",
+        data: {
+          message,
+          timestamp: new Date().toISOString(),
+          ...(data && { details: data }),
+        },
+      });
+    } catch (err) {
+      if (config.debug) {
+        console.log(`[MCP INFO] ${message}`, data);
+      }
+    }
+  };
 
   /**
    * Helper Functions
@@ -214,161 +278,6 @@ export default function createServer({
   };
 
   /**
-   * RESOURCES
-   *
-   * These resources provide access to academic papers, authors, and fields of study
-   * through URI templates that can be used to retrieve specific information.
-   */
-
-  /**
-   * Paper Resource - Get detailed information about a specific paper by ID
-   *
-   * URI format: paper://{paperId}
-   * Example: paper://649def34f8be52c8b66281af98ae884c09aef38b
-   */
-  server.resource(
-    "paper",
-    new ResourceTemplate("paper://{paperId}", { list: undefined }),
-    async (uri: URL, variables: Record<string, string | string[]>) => {
-      try {
-        const paperId = variables.paperId as string;
-        const paper = await getPaper({
-          paperId,
-          fields:
-            "paperId,title,abstract,year,venue,publicationVenue,externalIds,citationCount,authors,url,isOpenAccess,openAccessPdf,fieldsOfStudy",
-        });
-
-        return {
-          contents: [
-            {
-              uri: uri.href,
-              text: formatPaper(paper),
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          contents: [
-            {
-              uri: uri.href,
-              text: `Error retrieving paper: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      }
-    }
-  );
-
-  /**
-   * Author Resource - Get detailed information about a specific author by ID
-   *
-   * URI format: author://{authorId}
-   * Example: author://1741101
-   */
-  server.resource(
-    "author",
-    new ResourceTemplate("author://{authorId}", { list: undefined }),
-    async (uri: URL, variables: Record<string, string | string[]>) => {
-      try {
-        const authorId = variables.authorId as string;
-        const author = await getAuthor({
-          authorId,
-          fields:
-            "authorId,name,affiliations,paperCount,citationCount,hIndex,url",
-        });
-
-        return {
-          contents: [
-            {
-              uri: uri.href,
-              text: formatAuthor(author),
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          contents: [
-            {
-              uri: uri.href,
-              text: `Error retrieving author: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      }
-    }
-  );
-
-  /**
-   * Field of Study Resource - Get top papers in a specific academic field
-   *
-   * URI format: field://{fieldOfStudy}
-   * Example: field://Computer Science
-   */
-  server.resource(
-    "field",
-    new ResourceTemplate("field://{fieldOfStudy}", { list: undefined }),
-    async (uri: URL, variables: Record<string, string | string[]>) => {
-      try {
-        const fieldOfStudy = variables.fieldOfStudy as string;
-        const filter = createFilter("")
-          .withFieldsOfStudy([fieldOfStudy])
-          .withFields(["title", "authors", "year", "venue", "citationCount"])
-          .withSort("citationCount", "desc")
-          .withPagination(0, 10);
-
-        // We need to add a query even though we're filtering by field
-        filter.withQuery("*");
-
-        const results = await searchPapers(filter);
-
-        let text = `Top papers in ${fieldOfStudy}:\n\n`;
-        results.data.forEach((paper, index) => {
-          text += `${index + 1}. ${paper.title} (${paper.year || "N/A"})\n`;
-          if (paper.authors && paper.authors.length > 0) {
-            text += `   Authors: ${paper.authors
-              .map((a) => a.name)
-              .join(", ")}\n`;
-          }
-          if (paper.citationCount !== undefined) {
-            text += `   Citations: ${paper.citationCount}\n`;
-          }
-          text += "\n";
-        });
-
-        return {
-          contents: [
-            {
-              uri: uri.href,
-              text,
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          contents: [
-            {
-              uri: uri.href,
-              text: `Error retrieving field papers: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      }
-    }
-  );
-
-  /**
    * TOOLS
    *
    * These tools provide functionality for searching and analyzing academic literature.
@@ -385,16 +294,19 @@ export default function createServer({
   /**
    * Basic paper search with just a query and limit
    */
-  server.tool(
+  server.registerTool(
     "papers-search-basic",
-    "Search for academic papers with a simple query.",
     {
-      query: z.string().describe("Search query for papers"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return"),
+      title: "Basic papers search",
+      description: "Search for academic papers with a simple query.",
+      inputSchema: {
+        query: z.string().describe("Search query for papers"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return"),
+      },
     },
     async ({ query, limit }) => {
       try {
@@ -464,13 +376,18 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in papers-search-basic tool", {
+          query,
+          limit,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error searching papers: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error searching papers: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -482,50 +399,53 @@ export default function createServer({
   /**
    * Advanced paper search with multiple filters
    */
-  server.tool(
-    "papers-search-advanced",
-    "Search for academic papers with advanced filtering options",
+  server.registerTool(
+    "paper-search-advanced",
     {
-      query: z.string().describe("Search query for papers"),
-      yearStart: z
-        .number()
-        .optional()
-        .describe("Starting year for filtering (inclusive)"),
-      yearEnd: z
-        .number()
-        .optional()
-        .describe("Ending year for filtering (inclusive)"),
-      minCitations: z
-        .number()
-        .optional()
-        .describe("Minimum number of citations"),
-      openAccessOnly: z
-        .boolean()
-        .optional()
-        .describe("Only include open access papers"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return"),
-      fieldsOfStudy: z
-        .array(z.string())
-        .optional()
-        .describe("Fields of study to filter by"),
-      publicationTypes: z
-        .array(z.string())
-        .optional()
-        .describe("Publication types to filter by"),
-      sortBy: z
-        .enum(["relevance", "citationCount", "year"])
-        .optional()
-        .default("relevance")
-        .describe("Field to sort by"),
-      sortOrder: z
-        .enum(["asc", "desc"])
-        .optional()
-        .default("desc")
-        .describe("Sort order"),
+      title: "Advanced paper search",
+      description: "Search for academic papers with advanced filtering options",
+      inputSchema: {
+        query: z.string().describe("Search query for papers"),
+        yearStart: z
+          .number()
+          .optional()
+          .describe("Starting year for filtering (inclusive)"),
+        yearEnd: z
+          .number()
+          .optional()
+          .describe("Ending year for filtering (inclusive)"),
+        minCitations: z
+          .number()
+          .optional()
+          .describe("Minimum number of citations"),
+        openAccessOnly: z
+          .boolean()
+          .optional()
+          .describe("Only include open access papers"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return"),
+        fieldsOfStudy: z
+          .array(z.string())
+          .optional()
+          .describe("Fields of study to filter by"),
+        publicationTypes: z
+          .array(z.string())
+          .optional()
+          .describe("Publication types to filter by"),
+        sortBy: z
+          .enum(["relevance", "citationCount", "year"])
+          .optional()
+          .default("relevance")
+          .describe("Field to sort by"),
+        sortOrder: z
+          .enum(["asc", "desc"])
+          .optional()
+          .default("desc")
+          .describe("Sort order"),
+      },
     },
     async ({
       query,
@@ -538,6 +458,17 @@ export default function createServer({
       publicationTypes,
       sortBy,
       sortOrder,
+    }: {
+      query: string;
+      yearStart?: number;
+      yearEnd?: number;
+      minCitations?: number;
+      openAccessOnly?: boolean;
+      limit?: number;
+      fieldsOfStudy?: string[];
+      publicationTypes?: string[];
+      sortBy?: "relevance" | "citationCount" | "year";
+      sortOrder?: "asc" | "desc";
     }) => {
       try {
         const filter = createFilter(query)
@@ -634,13 +565,17 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in papers-search-advanced tool", {
+          query,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error searching papers: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error searching papers: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -652,27 +587,30 @@ export default function createServer({
   /**
    * Find a paper by closest title match
    */
-  server.tool(
+  server.registerTool(
     "search-paper-title",
-    "Find a paper by closest title match",
     {
-      title: z.string().describe("Paper title to match"),
-      yearStart: z
-        .number()
-        .optional()
-        .describe("Starting year for filtering (inclusive)"),
-      yearEnd: z
-        .number()
-        .optional()
-        .describe("Ending year for filtering (inclusive)"),
-      minCitations: z
-        .number()
-        .optional()
-        .describe("Minimum number of citations"),
-      openAccessOnly: z
-        .boolean()
-        .optional()
-        .describe("Only include open access papers"),
+      title: "search paper by title",
+      description: "Find a paper by closest title match",
+      inputSchema: {
+        title: z.string().describe("Paper title to match"),
+        yearStart: z
+          .number()
+          .optional()
+          .describe("Starting year for filtering (inclusive)"),
+        yearEnd: z
+          .number()
+          .optional()
+          .describe("Ending year for filtering (inclusive)"),
+        minCitations: z
+          .number()
+          .optional()
+          .describe("Minimum number of citations"),
+        openAccessOnly: z
+          .boolean()
+          .optional()
+          .describe("Only include open access papers"),
+      },
     },
     async ({
       title,
@@ -719,7 +657,7 @@ export default function createServer({
 
         // Debug: Check what we actually got back
         if (!paper || !paper.title) {
-          console.error("Paper match returned incomplete data:", paper);
+          logError("Paper match returned incomplete data", paper);
           return {
             content: [
               {
@@ -739,13 +677,17 @@ export default function createServer({
           ],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in search-paper-title tool", {
+          title,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error matching paper: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error matching paper: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -757,13 +699,17 @@ export default function createServer({
   /**
    * Get detailed information about a specific paper
    */
-  server.tool(
+  server.registerTool(
     "get-paper-abstract",
-    "Get detailed information about a specific paper including its abstract",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+      title: "get paper abstract",
+      description:
+        "Get detailed information about a specific paper including its abstract",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+      },
     },
     async ({ paperId }) => {
       try {
@@ -777,13 +723,14 @@ export default function createServer({
           content: [{ type: "text", text: formatPaper(paper) }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in paper-get tool", { paperId, error: errorMessage });
         return {
           content: [
             {
               type: "text",
-              text: `Error retrieving paper details: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error retrieving paper details: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -795,23 +742,26 @@ export default function createServer({
   /**
    * Get papers that cite a specific paper
    */
-  server.tool(
+  server.registerTool(
     "papers-citations",
-    "Get papers that cite a specific paper",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of citations to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Get papers that cite a specific paper",
+      description: "Get papers that cite a specific paper",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of citations to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ paperId, limit, offset }) => {
       try {
@@ -867,13 +817,17 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in paper-citations tool", {
+          paperId,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error retrieving citations: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error retrieving citations: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -885,23 +839,26 @@ export default function createServer({
   /**
    * Get papers cited by a specific paper
    */
-  server.tool(
+  server.registerTool(
     "papers-references",
-    "Get papers cited by a specific paper",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of references to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Get papers cited by a specific paper",
+      description: "Get papers cited by a specific paper",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of references to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ paperId, limit, offset }) => {
       try {
@@ -957,13 +914,17 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in paper-references tool", {
+          paperId,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error retrieving references: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error retrieving references: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -975,21 +936,24 @@ export default function createServer({
   /**
    * Search for authors by name or affiliation
    */
-  server.tool(
+  server.registerTool(
     "authors-search",
-    "Search for authors by name or affiliation",
     {
-      query: z.string().describe("Search query for authors"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Search for authors by name or affiliation",
+      description: "Search for authors by name or affiliation",
+      inputSchema: {
+        query: z.string().describe("Search query for authors"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ query, limit, offset }) => {
       try {
@@ -1044,13 +1008,18 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in author-search tool", {
+          query,
+          limit,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error searching authors: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error searching authors: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -1062,21 +1031,24 @@ export default function createServer({
   /**
    * Get papers written by a specific author
    */
-  server.tool(
+  server.registerTool(
     "authors-papers",
-    "Get papers written by a specific author",
     {
-      authorId: z.string().describe("Author ID"),
-      limit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of papers to return"),
-      offset: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Offset for pagination"),
+      title: "Get papers written by a specific author",
+      description: "Get papers written by a specific author",
+      inputSchema: {
+        authorId: z.string().describe("Author ID"),
+        limit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of papers to return"),
+        offset: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Offset for pagination"),
+      },
     },
     async ({ authorId, limit, offset }) => {
       try {
@@ -1130,13 +1102,18 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in author-papers tool", {
+          authorId,
+          limit,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error retrieving author papers: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error retrieving author papers: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -1148,15 +1125,18 @@ export default function createServer({
   /**
    * Look up multiple papers by their IDs
    */
-  server.tool(
+  server.registerTool(
     "papers-batch",
-    "Look up multiple papers by their IDs",
     {
-      paperIds: z
-        .array(z.string())
-        .describe(
-          "Array of paper IDs (Semantic Scholar IDs, arXiv IDs, DOIs, etc.)"
-        ),
+      title: "Look up multiple papers by their IDs",
+      description: "Look up multiple papers by their IDs",
+      inputSchema: {
+        paperIds: z
+          .array(z.string())
+          .describe(
+            "Array of paper IDs (Semantic Scholar IDs, arXiv IDs, DOIs, etc.)"
+          ),
+      },
     },
     async ({ paperIds }) => {
       try {
@@ -1221,13 +1201,17 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in batch-paper-lookup tool", {
+          paperCount: paperIds.length,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error in batch paper lookup: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error in batch paper lookup: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -1239,15 +1223,19 @@ export default function createServer({
   /**
    * Fetch any DOI URL and return the page content
    */
-  server.tool(
+  server.registerTool(
     "fetch-doi-url",
-    "Fetch content from a DOI URL by constructing the URL from a DOI",
     {
-      doi: z
-        .string()
-        .describe(
-          "DOI identifier (e.g., 10.1016/j.aos.2025.101608 or just the DOI without URL)"
-        ),
+      title: "Fetch content from a DOI URL",
+      description:
+        "Fetch content from a DOI URL by constructing the URL from a DOI",
+      inputSchema: {
+        doi: z
+          .string()
+          .describe(
+            "DOI identifier (e.g., 10.1016/j.aos.2025.101608 or just the DOI without URL)"
+          ),
+      },
     },
     async ({ doi }) => {
       try {
@@ -1348,6 +1336,7 @@ export default function createServer({
       } catch (error) {
         if (axios.isAxiosError(error)) {
           if (error.response?.status === 404) {
+            logError("DOI not found (404)", { doi, status: 404 });
             return {
               content: [
                 {
@@ -1359,6 +1348,7 @@ export default function createServer({
             };
           }
           if (error.code === "ECONNABORTED") {
+            logError("DOI request timeout", { doi, code: "ECONNABORTED" });
             return {
               content: [
                 {
@@ -1371,13 +1361,14 @@ export default function createServer({
           }
         }
 
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in fetch-doi-url tool", { doi, error: errorMessage });
         return {
           content: [
             {
               type: "text",
-              text: `Error fetching DOI URL: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error fetching DOI URL: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -1389,15 +1380,19 @@ export default function createServer({
   /**
    * Download full-text PDF from Wiley and convert to text
    */
-  server.tool(
+  server.registerTool(
     "download-full-paper-wiley",
-    "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
     {
-      doi: z
-        .string()
-        .describe(
-          "DOI of the paper to download (e.g., 10.1111/1467-923X.12168)"
-        ),
+      title: "Download full-text PDF from Wiley",
+      description:
+        "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
+      inputSchema: {
+        doi: z
+          .string()
+          .describe(
+            "DOI of the paper to download (e.g., 10.1111/1467-923X.12168)"
+          ),
+      },
     },
     async ({ doi }) => {
       try {
@@ -1514,17 +1509,21 @@ export default function createServer({
             ],
           };
         } catch (parseError) {
+          const parseErrorMessage =
+            parseError instanceof Error
+              ? parseError.message
+              : String(parseError);
+          logError("Failed to extract text from PDF", {
+            doi,
+            error: parseErrorMessage,
+          });
           return {
             content: [
               {
                 type: "text",
                 text:
                   `PDF download succeeded but text extraction failed.\n` +
-                  `Error: ${
-                    parseError instanceof Error
-                      ? parseError.message
-                      : String(parseError)
-                  }`,
+                  `Error: ${parseErrorMessage}`,
               },
             ],
             isError: true,
@@ -1534,6 +1533,7 @@ export default function createServer({
         // Handle specific Wiley API errors
         if (axios.isAxiosError(error)) {
           if (error.response?.status === 400) {
+            logError("Wiley TDM Client Token missing", { doi, status: 400 });
             return {
               content: [
                 {
@@ -1548,6 +1548,7 @@ export default function createServer({
             };
           }
           if (error.response?.status === 403) {
+            logError("Invalid Wiley TDM Client Token", { doi, status: 403 });
             return {
               content: [
                 {
@@ -1584,6 +1585,7 @@ export default function createServer({
             };
           }
           if (error.response?.status === 429) {
+            logError("Wiley API rate limit exceeded", { doi, status: 429 });
             return {
               content: [
                 {
@@ -1620,45 +1622,48 @@ export default function createServer({
   /**
    * Search arXiv for papers
    */
-  server.tool(
+  server.registerTool(
     "search-arxiv",
-    "Search for papers on arXiv using their API",
     {
-      query: z.string().describe("Search query for arXiv papers"),
-      searchType: z
-        .enum([
-          "all",
-          "title",
-          "author",
-          "abstract",
-          "comment",
-          "journal",
-          "category",
-          "id",
-        ])
-        .optional()
-        .default("all")
-        .describe("Type of search to perform"),
-      maxResults: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of results to return (max 100)"),
-      start: z
-        .number()
-        .optional()
-        .default(0)
-        .describe("Starting index for pagination"),
-      sortBy: z
-        .enum(["relevance", "lastUpdatedDate", "submittedDate"])
-        .optional()
-        .default("relevance")
-        .describe("Sort order for results"),
-      sortOrder: z
-        .enum(["ascending", "descending"])
-        .optional()
-        .default("descending")
-        .describe("Sort direction"),
+      title: "Search arXiv for papers",
+      description: "Search for papers on arXiv using their API",
+      inputSchema: {
+        query: z.string().describe("Search query for arXiv papers"),
+        searchType: z
+          .enum([
+            "all",
+            "title",
+            "author",
+            "abstract",
+            "comment",
+            "journal",
+            "category",
+            "id",
+          ])
+          .optional()
+          .default("all")
+          .describe("Type of search to perform"),
+        maxResults: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of results to return (max 100)"),
+        start: z
+          .number()
+          .optional()
+          .default(0)
+          .describe("Starting index for pagination"),
+        sortBy: z
+          .enum(["relevance", "lastUpdatedDate", "submittedDate"])
+          .optional()
+          .default("relevance")
+          .describe("Sort order for results"),
+        sortOrder: z
+          .enum(["ascending", "descending"])
+          .optional()
+          .default("descending")
+          .describe("Sort direction"),
+      },
     },
     async ({ query, searchType, maxResults, start, sortBy, sortOrder }) => {
       try {
@@ -1877,6 +1882,7 @@ export default function createServer({
       } catch (error) {
         if (axios.isAxiosError(error)) {
           if (error.response?.status === 400) {
+            logError("arXiv bad request", { query, status: 400 });
             return {
               content: [
                 {
@@ -1888,6 +1894,7 @@ export default function createServer({
             };
           }
           if (error.code === "ECONNABORTED") {
+            logError("arXiv search timeout", { query, code: "ECONNABORTED" });
             return {
               content: [
                 {
@@ -1900,13 +1907,14 @@ export default function createServer({
           }
         }
 
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in search-arxiv tool", { query, error: errorMessage });
         return {
           content: [
             {
               type: "text",
-              text: `Error searching arXiv: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error searching arXiv: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -1918,15 +1926,19 @@ export default function createServer({
   /**
    * Download full-text PDF from arXiv and convert to text
    */
-  server.tool(
+  server.registerTool(
     "download-full-paper-arxiv",
-    "Download full-text PDF of an arXiv paper and extract text content (memory only)",
     {
-      arxivId: z
-        .string()
-        .describe(
-          "arXiv ID of the paper to download (e.g., 2301.12345, hep-ex/0307015, or with version 2301.12345v2)"
-        ),
+      title: "Download full-text PDF from arXiv",
+      description:
+        "Download full-text PDF of an arXiv paper and extract text content (memory only)",
+      inputSchema: {
+        arxivId: z
+          .string()
+          .describe(
+            "arXiv ID of the paper to download (e.g., 2301.12345, hep-ex/0307015, or with version 2301.12345v2)"
+          ),
+      },
     },
     async ({ arxivId }) => {
       try {
@@ -2034,17 +2046,21 @@ export default function createServer({
             ],
           };
         } catch (parseError) {
+          const parseErrorMessage =
+            parseError instanceof Error
+              ? parseError.message
+              : String(parseError);
+          logError("Failed to extract text from PDF (arXiv)", {
+            arxivId,
+            error: parseErrorMessage,
+          });
           return {
             content: [
               {
                 type: "text",
                 text:
                   `PDF download succeeded but text extraction failed.\n` +
-                  `Error: ${
-                    parseError instanceof Error
-                      ? parseError.message
-                      : String(parseError)
-                  }`,
+                  `Error: ${parseErrorMessage}`,
               },
             ],
             isError: true,
@@ -2054,6 +2070,7 @@ export default function createServer({
         // Handle specific arXiv errors
         if (axios.isAxiosError(error)) {
           if (error.response?.status === 404) {
+            logError("arXiv paper not found", { arxivId, status: 404 });
             return {
               content: [
                 {
@@ -2071,6 +2088,7 @@ export default function createServer({
             };
           }
           if (error.response?.status === 429) {
+            logError("arXiv API rate limit exceeded", { arxivId, status: 429 });
             return {
               content: [
                 {
@@ -2087,6 +2105,10 @@ export default function createServer({
             };
           }
           if (error.code === "ECONNABORTED") {
+            logError("arXiv download timeout", {
+              arxivId,
+              code: "ECONNABORTED",
+            });
             return {
               content: [
                 {
@@ -2099,13 +2121,17 @@ export default function createServer({
           }
         }
 
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in download-full-paper-arxiv tool", {
+          arxivId,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error downloading arXiv paper: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error downloading arXiv paper: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -2117,27 +2143,30 @@ export default function createServer({
   /**
    * Analyze the citation network for a specific paper
    */
-  server.tool(
+  server.registerTool(
     "analysis-citation-network",
-    "Analyze the citation network for a specific paper",
     {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
-      depth: z
-        .string()
-        .optional()
-        .describe("Depth of citation network (1 or 2)"),
-      citationsLimit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of citations to analyze per paper"),
-      referencesLimit: z
-        .number()
-        .optional()
-        .default(10)
-        .describe("Maximum number of references to analyze per paper"),
+      title: "Analyze citation network",
+      description: "Analyze the citation network for a specific paper",
+      inputSchema: {
+        paperId: z
+          .string()
+          .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
+        depth: z
+          .string()
+          .optional()
+          .describe("Depth of citation network (1 or 2)"),
+        citationsLimit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of citations to analyze per paper"),
+        referencesLimit: z
+          .number()
+          .optional()
+          .default(10)
+          .describe("Maximum number of references to analyze per paper"),
+      },
     },
     async ({ paperId, depth, citationsLimit, referencesLimit }) => {
       try {
@@ -2339,13 +2368,17 @@ export default function createServer({
           content: [{ type: "text", text: response }],
         };
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("Error in analyze-citation-network tool", {
+          paperId,
+          error: errorMessage,
+        });
         return {
           content: [
             {
               type: "text",
-              text: `Error analyzing citation network: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              text: `Error analyzing citation network: ${errorMessage}`,
             },
           ],
           isError: true,
@@ -2354,190 +2387,79 @@ export default function createServer({
     }
   );
 
-  // PROMPTS
-
-  // Literature review prompt
-  server.prompt(
-    "literature-review",
-    "Conduct a literature review on a research topic",
-    {
-      topic: z.string().describe("Research topic for literature review"),
-      yearStart: z
-        .string()
-        .optional()
-        .describe("Starting year for filtering (inclusive)"),
-      yearEnd: z
-        .string()
-        .optional()
-        .describe("Ending year for filtering (inclusive)"),
-      fieldsOfStudy: z
-        .string()
-        .optional()
-        .describe("Fields of study to filter by (comma-separated)"),
-    },
-    (args) => {
-      const { topic, yearStart, yearEnd, fieldsOfStudy } = args;
-      let promptText = `Please conduct a literature review on the topic: "${topic}"\n\n`;
-
-      if (yearStart || yearEnd) {
-        promptText += `Focus on literature from ${yearStart || ""} to ${
-          yearEnd || "present"
-        }.\n\n`;
-      }
-
-      if (fieldsOfStudy) {
-        promptText += `Consider research in the following fields: ${fieldsOfStudy}.\n\n`;
-      }
-
-      promptText += `For this literature review, please:\n`;
-      promptText += `1. Identify key papers and their contributions\n`;
-      promptText += `2. Summarize major findings and methodologies\n`;
-      promptText += `3. Identify trends, patterns, and gaps in the research\n`;
-      promptText += `4. Suggest potential directions for future research\n\n`;
-      promptText += `Use the Semantic Scholar tools to search for relevant papers and analyze citation networks.`;
-
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: promptText,
-            },
-          },
-        ],
-      };
-    }
-  );
-
-  // Citation analysis prompt
-  server.prompt(
-    "citation-analysis",
-    "Analyze the citation network for a specific paper",
-    {
-      paperId: z
-        .string()
-        .describe("Paper ID (Semantic Scholar ID, arXiv ID, DOI, etc.)"),
-      depth: z
-        .string()
-        .optional()
-        .describe("Depth of citation analysis (1 or 2)"),
-    },
-    (args) => {
-      const { paperId, depth } = args;
-      let promptText = `Please analyze the citation network for the paper with ID: ${paperId}\n\n`;
-
-      if (depth && depth === "2") {
-        promptText += `Include a second-level analysis of citations.\n\n`;
-      }
-
-      promptText += `For this citation analysis, please:\n`;
-      promptText += `1. Identify the most influential papers that cite this work\n`;
-      promptText += `2. Analyze how this paper has influenced different research areas\n`;
-      promptText += `3. Identify potential research collaborations based on citation patterns\n`;
-      promptText += `4. Summarize the overall impact of this paper on the field\n\n`;
-      promptText += `Use the Semantic Scholar tools to retrieve paper details and analyze the citation network.`;
-
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: promptText,
-            },
-          },
-        ],
-      };
-    }
-  );
-
-  // Research gap finder prompt
-  server.prompt(
-    "research-gap-finder",
-    "Identify research gaps in a specific topic",
-    {
-      topic: z.string().describe("Research topic to analyze for gaps"),
-      yearStart: z
-        .string()
-        .optional()
-        .describe("Starting year for filtering (inclusive)"),
-      yearEnd: z
-        .string()
-        .optional()
-        .describe("Ending year for filtering (inclusive)"),
-    },
-    (args) => {
-      const { topic, yearStart, yearEnd } = args;
-      let promptText = `Please identify research gaps in the topic: "${topic}"\n\n`;
-
-      if (yearStart || yearEnd) {
-        promptText += `Focus on literature from ${yearStart || ""} to ${
-          yearEnd || "present"
-        }.\n\n`;
-      }
-
-      promptText += `For this analysis, please:\n`;
-      promptText += `1. Identify the main research questions being addressed in this field\n`;
-      promptText += `2. Determine which questions have been thoroughly explored\n`;
-      promptText += `3. Identify questions that have received limited attention\n`;
-      promptText += `4. Suggest specific research gaps that could be addressed in future work\n`;
-      promptText += `5. Recommend methodologies or approaches for addressing these gaps\n\n`;
-      promptText += `Use the Semantic Scholar tools to search for relevant papers and analyze the current state of research.`;
-
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: promptText,
-            },
-          },
-        ],
-      };
-    }
-  );
-  return server.server;
+  return server;
 }
 
-// Handle MCP requests at /mcp endpoint
-app.all("/mcp", async (req: Request, res: Response) => {
+// Map to store transports by session ID
+const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+
+// Handle POST requests for client-to-server communication
+app.post("/mcp", async (req: Request, res: Response) => {
   try {
-    // Parse configuration from HTTP request
-    const rawConfig = parseConfig(req);
+    // Check for existing session ID
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    let transport: StreamableHTTPServerTransport;
 
-    // Parse and validate configuration with schema
-    const config = configSchema.parse({
-      SEMANTIC_SCHOLAR_API_KEY:
-        rawConfig.SEMANTIC_SCHOLAR_API_KEY ||
-        process.env.SEMANTIC_SCHOLAR_API_KEY ||
-        undefined,
-      WILEY_TDM_CLIENT_TOKEN:
-        rawConfig.WILEY_TDM_CLIENT_TOKEN ||
-        process.env.WILEY_TDM_CLIENT_TOKEN ||
-        undefined,
-      debug: rawConfig.debug || false,
-    });
+    if (sessionId && transports[sessionId]) {
+      // Reuse existing transport
+      transport = transports[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      // New initialization request
+      // Parse configuration from HTTP request
+      const rawConfig = parseConfig(req);
 
-    // Set API key on the semantic scholar client
-    if (config.SEMANTIC_SCHOLAR_API_KEY) {
-      semanticScholarClient.defaults.headers.common["x-api-key"] =
-        config.SEMANTIC_SCHOLAR_API_KEY;
+      // Parse and validate configuration with schema
+      const config = configSchema.parse({
+        SEMANTIC_SCHOLAR_API_KEY:
+          rawConfig.SEMANTIC_SCHOLAR_API_KEY ||
+          process.env.SEMANTIC_SCHOLAR_API_KEY ||
+          undefined,
+        WILEY_TDM_CLIENT_TOKEN:
+          rawConfig.WILEY_TDM_CLIENT_TOKEN ||
+          process.env.WILEY_TDM_CLIENT_TOKEN ||
+          undefined,
+        debug: rawConfig.debug || false,
+      });
+
+      // Set API key on the semantic scholar client
+      if (config.SEMANTIC_SCHOLAR_API_KEY) {
+        semanticScholarClient.defaults.headers.common["x-api-key"] =
+          config.SEMANTIC_SCHOLAR_API_KEY;
+      }
+
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId) => {
+          // Store the transport by session ID
+          transports[sessionId] = transport;
+        },
+      });
+
+      // Clean up transport when closed
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          delete transports[transport.sessionId];
+        }
+      };
+
+      const server = createServer({ config });
+
+      // Connect to the MCP server
+      await server.connect(transport);
+    } else {
+      // Invalid request
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Bad Request: No valid session ID provided",
+        },
+        id: null,
+      });
+      return;
     }
 
-    const server = createServer({ config });
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-
-    // Clean up on request close
-    res.on("close", () => {
-      transport.close();
-      server.close();
-    });
-
-    await server.connect(transport);
+    // Handle the request
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("Error handling MCP request:", error);
@@ -2551,29 +2473,30 @@ app.all("/mcp", async (req: Request, res: Response) => {
   }
 });
 
-// Main function to start the server in the appropriate mode
-async function main() {
-  const transport = process.env.TRANSPORT || "stdio";
-
-  if (transport === "http") {
-    // Run in HTTP mode
-    app.listen(PORT, () => {
-      console.log(`MCP HTTP Server listening on port ${PORT}`);
-    });
-  } else {
-    // Optional: backward compatibility with STDIO transport
-    const config = configSchema.parse({
-      SEMANTIC_SCHOLAR_API_KEY:
-        process.env.SEMANTIC_SCHOLAR_API_KEY || undefined,
-      WILEY_TDM_CLIENT_TOKEN: process.env.WILEY_TDM_CLIENT_TOKEN || undefined,
-      debug: process.env.DEBUG === "true" || false,
-    });
-
-    const server = createServer({ config });
-    const stdioTransport = new StdioServerTransport();
-    await server.connect(stdioTransport);
-    console.error("MCP Server running in stdio mode");
+// Reusable handler for GET and DELETE requests
+const handleSessionRequest = async (req: Request, res: Response) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send("Invalid or missing session ID");
+    return;
   }
+
+  const transport = transports[sessionId];
+  await transport.handleRequest(req, res);
+};
+
+// Handle GET requests for server-to-client notifications via SSE
+app.get("/mcp", handleSessionRequest);
+
+// Handle DELETE requests for session termination
+app.delete("/mcp", handleSessionRequest);
+
+// Main function to start the server in HTTP mode
+async function main() {
+  // Run in HTTP mode
+  app.listen(PORT, () => {
+    console.log(`MCP HTTP Server listening on port ${PORT}`);
+  });
 }
 
 // Start the server
