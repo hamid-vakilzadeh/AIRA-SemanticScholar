@@ -297,7 +297,7 @@ export default function createServer({
   server.registerTool(
     "papers-search-basic",
     {
-      title: "Basic papers search",
+      title: "basic search for papers",
       description: "Search for academic papers with a simple query.",
       inputSchema: {
         query: z.string().describe("Search query for papers"),
@@ -402,7 +402,7 @@ export default function createServer({
   server.registerTool(
     "paper-search-advanced",
     {
-      title: "Advanced paper search",
+      title: "advanced search for papers",
       description: "Search for academic papers with advanced filtering options",
       inputSchema: {
         query: z.string().describe("Search query for papers"),
@@ -590,7 +590,7 @@ export default function createServer({
   server.registerTool(
     "search-paper-title",
     {
-      title: "search paper by title",
+      title: "search for a specific paper",
       description: "Find a paper by closest title match",
       inputSchema: {
         title: z.string().describe("Paper title to match"),
@@ -702,7 +702,7 @@ export default function createServer({
   server.registerTool(
     "get-paper-abstract",
     {
-      title: "get paper abstract",
+      title: "read abstract",
       description:
         "Get detailed information about a specific paper including its abstract",
       inputSchema: {
@@ -745,7 +745,7 @@ export default function createServer({
   server.registerTool(
     "papers-citations",
     {
-      title: "Get papers that cite a specific paper",
+      title: "review paper citations",
       description: "Get papers that cite a specific paper",
       inputSchema: {
         paperId: z
@@ -842,7 +842,7 @@ export default function createServer({
   server.registerTool(
     "papers-references",
     {
-      title: "Get papers cited by a specific paper",
+      title: "review paper references",
       description: "Get papers cited by a specific paper",
       inputSchema: {
         paperId: z
@@ -939,7 +939,7 @@ export default function createServer({
   server.registerTool(
     "authors-search",
     {
-      title: "Search for authors by name or affiliation",
+      title: "search authors",
       description: "Search for authors by name or affiliation",
       inputSchema: {
         query: z.string().describe("Search query for authors"),
@@ -1034,7 +1034,7 @@ export default function createServer({
   server.registerTool(
     "authors-papers",
     {
-      title: "Get papers written by a specific author",
+      title: "search author's papers",
       description: "Get papers written by a specific author",
       inputSchema: {
         authorId: z.string().describe("Author ID"),
@@ -1128,7 +1128,7 @@ export default function createServer({
   server.registerTool(
     "papers-batch",
     {
-      title: "Look up multiple papers by their IDs",
+      title: "look up multiple papers by their IDs",
       description: "Look up multiple papers by their IDs",
       inputSchema: {
         paperIds: z
@@ -1226,7 +1226,7 @@ export default function createServer({
   server.registerTool(
     "fetch-doi-url",
     {
-      title: "Fetch content from a DOI URL",
+      title: "fetch content from a DOI URL",
       description:
         "Fetch content from a DOI URL by constructing the URL from a DOI",
       inputSchema: {
@@ -1383,7 +1383,7 @@ export default function createServer({
   server.registerTool(
     "download-full-paper-wiley",
     {
-      title: "Download full-text PDF from Wiley",
+      title: "download full-text PDF from Wiley",
       description:
         "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
       inputSchema: {
@@ -1625,7 +1625,7 @@ export default function createServer({
   server.registerTool(
     "search-arxiv",
     {
-      title: "Search arXiv for papers",
+      title: "search arXiv.org for papers",
       description: "Search for papers on arXiv using their API",
       inputSchema: {
         query: z.string().describe("Search query for arXiv papers"),
@@ -1929,7 +1929,7 @@ export default function createServer({
   server.registerTool(
     "download-full-paper-arxiv",
     {
-      title: "Download full-text PDF from arXiv",
+      title: "download full-text PDF from arXiv.org",
       description:
         "Download full-text PDF of an arXiv paper and extract text content (memory only)",
       inputSchema: {
@@ -2146,7 +2146,7 @@ export default function createServer({
   server.registerTool(
     "analysis-citation-network",
     {
-      title: "Analyze citation network",
+      title: "analyze paper citation network",
       description: "Analyze the citation network for a specific paper",
       inputSchema: {
         paperId: z
