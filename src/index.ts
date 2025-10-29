@@ -1221,167 +1221,12 @@ export default function createServer({
   );
 
   /**
-   * Fetch any DOI URL and return the page content
-   */
-  server.registerTool(
-    "fetch-doi-url",
-    {
-      title: "fetch content from a DOI URL",
-      description:
-        "Fetch content from a DOI URL by constructing the URL from a DOI",
-      inputSchema: {
-        doi: z
-          .string()
-          .describe(
-            "DOI identifier (e.g., 10.1016/j.aos.2025.101608 or just the DOI without URL)"
-          ),
-      },
-    },
-    async ({ doi }) => {
-      try {
-        // Clean the DOI - remove any URL prefixes if present
-        let cleanDoi = doi;
-        if (doi.includes("doi.org/")) {
-          cleanDoi = doi.split("doi.org/").pop() || doi;
-        }
-        if (doi.includes("dx.doi.org/")) {
-          cleanDoi = doi.split("dx.doi.org/").pop() || doi;
-        }
-
-        // Construct the DOI URL
-        const doiUrl = `https://doi.org/${cleanDoi}`;
-
-        // Fetch the URL - DOI URLs typically redirect to the publisher's site
-        const response = await axios.get(doiUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; MCP-SemanticScholar/1.0)",
-            Accept:
-              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          },
-          maxRedirects: 5,
-          timeout: 30000, // 30 second timeout
-          validateStatus: (status) => status < 500, // Accept redirects
-        });
-
-        // Get the final URL after redirects
-        const finalUrl =
-          response.request?.res?.responseUrl || response.config.url;
-
-        // Extract basic information from the HTML
-        const htmlContent = response.data;
-
-        // Try to extract title
-        const titleMatch = htmlContent.match(/<title[^>]*>([^<]+)<\/title>/i);
-        const title = titleMatch ? titleMatch[1].trim() : "Unknown Title";
-
-        // Try to extract meta description
-        const descMatch = htmlContent.match(
-          /<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i
-        );
-        const description = descMatch ? descMatch[1].trim() : "";
-
-        // Try to extract abstract if present
-        const abstractMatch = htmlContent.match(
-          /<(?:div|section)[^>]*(?:class|id)=["'][^"']*abstract[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|section)>/i
-        );
-        const abstract = abstractMatch
-          ? abstractMatch[1]
-              .replace(/<[^>]+>/g, " ")
-              .replace(/\s+/g, " ")
-              .trim()
-          : "";
-
-        // Construct response
-        let responseText = `DOI URL Fetch Results\n`;
-        responseText += `===================\n\n`;
-        responseText += `DOI: ${cleanDoi}\n`;
-        responseText += `Original URL: ${doiUrl}\n`;
-        responseText += `Final URL: ${finalUrl}\n\n`;
-        responseText += `Title: ${title}\n\n`;
-
-        if (description) {
-          responseText += `Description: ${description}\n\n`;
-        }
-
-        if (abstract && abstract.length > 50) {
-          responseText += `Abstract:\n${abstract.substring(0, 2000)}${
-            abstract.length > 2000 ? "..." : ""
-          }\n\n`;
-        }
-
-        // Add note about full content
-        responseText += `Note: This tool fetches the HTML page from the DOI URL. `;
-        responseText += `For full PDF content extraction from Wiley papers, use the 'download-full-paper-wiley' tool instead.\n`;
-        responseText += `The page may require institutional access or subscription for full content.\n`;
-
-        // If we want to provide more content, we could extract more text
-        if (!abstract || abstract.length < 100) {
-          // Try to extract main content
-          const bodyText = htmlContent
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-
-          if (bodyText.length > 500) {
-            responseText += `\nPage Preview (first 1500 characters):\n`;
-            responseText += bodyText.substring(0, 1500) + "...\n";
-          }
-        }
-
-        return {
-          content: [{ type: "text", text: responseText }],
-        };
-      } catch (error) {
-        if (axios.isAxiosError(error)) {
-          if (error.response?.status === 404) {
-            logError("DOI not found (404)", { doi, status: 404 });
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error: DOI not found (404)\n\nThe DOI '${doi}' could not be resolved. Please check if the DOI is correct.`,
-                },
-              ],
-              isError: true,
-            };
-          }
-          if (error.code === "ECONNABORTED") {
-            logError("DOI request timeout", { doi, code: "ECONNABORTED" });
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error: Request timeout\n\nThe request to fetch DOI '${doi}' timed out. The server may be slow or unresponsive.`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        }
-
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        logError("Error in fetch-doi-url tool", { doi, error: errorMessage });
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error fetching DOI URL: ${errorMessage}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  /**
    * Download full-text PDF from Wiley and convert to text
+   * Only register this tool if WILEY_TDM_CLIENT_TOKEN is configured
    */
-  server.registerTool(
-    "download-full-paper-wiley",
+  if (config.WILEY_TDM_CLIENT_TOKEN) {
+    server.registerTool(
+      "download-full-paper-wiley",
     {
       title: "download full-text PDF from Wiley",
       description:
@@ -1396,27 +1241,7 @@ export default function createServer({
     },
     async ({ doi }) => {
       try {
-        // Check if Wiley token is configured
-        if (!config.WILEY_TDM_CLIENT_TOKEN) {
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  "Error: Wiley TDM Client Token not configured.\n\n" +
-                  "Tell the user to download full-text PDFs from Wiley, you need to:\n" +
-                  "1. Visit: https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining\n" +
-                  "2. Accept the Wiley terms and conditions for Text and Data Mining\n" +
-                  "3. Obtain your TDM Client Token\n" +
-                  "4. Set the WILEY_TDM_CLIENT_TOKEN environment variable\n\n" +
-                  "Note: You must have institutional access or subscription to the content you want to download.\n" +
-                  "Academic subscribers can access subscribed content for non-commercial research purposes at no extra cost.",
-              },
-            ],
-            isError: true,
-          };
-        }
-
+        // Token is guaranteed to be available since tool is only registered when configured
         // Encode DOI for URL (replace / with %2F)
         const encodedDoi = encodeURIComponent(doi);
         const downloadUrl = `https://api.wiley.com/onlinelibrary/tdm/v1/articles/${encodedDoi}`;
@@ -1533,15 +1358,18 @@ export default function createServer({
         // Handle specific Wiley API errors
         if (axios.isAxiosError(error)) {
           if (error.response?.status === 400) {
-            logError("Wiley TDM Client Token missing", { doi, status: 400 });
+            logError("Wiley API bad request", { doi, status: 400 });
             return {
               content: [
                 {
                   type: "text",
                   text:
-                    "Error 400: No TDM Client Token was found in the request.\n\n" +
-                    "Please visit https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining " +
-                    "to obtain your Wiley TDM Client Token and configure it properly.",
+                    "Error 400: Bad request to Wiley API.\n\n" +
+                    "This may indicate:\n" +
+                    "- The TDM Client Token format is incorrect\n" +
+                    "- The DOI format is invalid\n" +
+                    "- There's an issue with the request headers\n\n" +
+                    "Please verify your token is correctly configured and the DOI is valid.",
                 },
               ],
               isError: true,
@@ -1618,6 +1446,7 @@ export default function createServer({
       }
     }
   );
+  }
 
   /**
    * Search arXiv for papers
