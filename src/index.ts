@@ -94,6 +94,44 @@ app.use(
 app.use(express.json());
 
 /**
+ * Well-Known Endpoint for MCP Configuration Schema
+ * Required for Smithery to detect configuration options
+ * See: https://smithery.ai/docs/build/session-config
+ */
+app.get("/.well-known/mcp-config", (req: Request, res: Response) => {
+  const schema = {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    $id: `${req.protocol}://${req.get("host")}/.well-known/mcp-config`,
+    title: "Semantic Scholar MCP Configuration",
+    description: "Configuration for connecting to the Semantic Scholar MCP server",
+    "x-query-style": "dot+bracket",
+    type: "object",
+    properties: {
+      SEMANTIC_SCHOLAR_API_KEY: {
+        type: "string",
+        title: "Semantic Scholar API Key",
+        description: "Your Semantic Scholar API key for enhanced rate limits and access",
+      },
+      WILEY_TDM_CLIENT_TOKEN: {
+        type: "string",
+        title: "Wiley TDM Client Token",
+        description: "Your Wiley TDM Client Token for downloading full-text papers",
+      },
+      debug: {
+        type: "boolean",
+        title: "Debug Mode",
+        default: false,
+        description: "Enable debug logging for troubleshooting",
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  };
+
+  res.json(schema);
+});
+
+/**
  * Semantic Scholar MCP Server
  *
  * This server provides access to the Semantic Scholar Academic Graph,
