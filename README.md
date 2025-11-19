@@ -4,9 +4,9 @@
 
 A Model Context Protocol (MCP) server that provides AI models with comprehensive access to the Semantic Scholar Academic Graph API. This server enables intelligent literature search, paper analysis, and citation network exploration through a robust set of tools, resources, and prompts.
 
-> The MCP project extends the work we started in our academic paper on using AI as a research assistant. In that paper, we focused on [retrieval-augmented generation (RAG) as a practical approach to support research tasks](http://lit-review-assistant.streamlit.app/). By the time the paper was published, we had already moved forward with MCP, which takes the core ideas further and delivers a more capable system. While MCP isn’t covered in the paper, it continues the same effort and reflects what we learned along the way.
+> The MCP project extends the work we started in our academic paper on using AI as a research assistant. In that paper, we focused on [retrieval-augmented generation (RAG) as a practical approach to support research tasks](http://lit-review-assistant.streamlit.app/). By the time the paper was published, we had already moved forward with MCP, which takes the core ideas further and delivers a more capable system. While MCP isn't covered in the paper, it continues the same effort and reflects what we learned along the way.
 >
-> If you’re referencing this project, please also cite the following paper to acknowledge the original research:
+> If you're referencing this project, please also cite the following paper to acknowledge the original research:
 >
 > <strong>Vakilzadeh, H., and Wood, D. A. (2025). The Development of a RAG-Based Artificial Intelligence Research Assistant (AIRA). <em>Journal of Information Systems forthcoming</em>.</strong>
 
