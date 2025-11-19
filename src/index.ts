@@ -105,12 +105,12 @@ export const configSchema = z.object({
   SEMANTIC_SCHOLAR_API_KEY: z
     .string()
     .optional()
-    .describe("Your Semantic Scholar API key"),
+    .describe("Your Semantic Scholar API key for enhanced rate limits and access"),
   WILEY_TDM_CLIENT_TOKEN: z
     .string()
     .optional()
-    .describe("Your Wiley TDM Client Token for downloading papers"),
-  debug: z.boolean().default(false).describe("Enable debug logging"),
+    .describe("Your Wiley TDM Client Token for downloading full-text papers"),
+  debug: z.boolean().default(false).describe("Enable debug logging for troubleshooting"),
 });
 
 // Parse configuration from HTTP request query parameters
@@ -299,6 +299,10 @@ export default function createServer({
     {
       title: "basic search for papers",
       description: "Search for academic papers with a simple query.",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.9,
+      },
       inputSchema: {
         query: z.string().describe("Search query for papers"),
         limit: z
@@ -404,6 +408,10 @@ export default function createServer({
     {
       title: "advanced search for papers",
       description: "Search for academic papers with advanced filtering options",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.8,
+      },
       inputSchema: {
         query: z.string().describe("Search query for papers"),
         yearStart: z
@@ -592,6 +600,10 @@ export default function createServer({
     {
       title: "search for a specific paper",
       description: "Find a paper by closest title match",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.85,
+      },
       inputSchema: {
         title: z.string().describe("Paper title to match"),
         yearStart: z
@@ -705,6 +717,10 @@ export default function createServer({
       title: "read abstract",
       description:
         "Get detailed information about a specific paper including its abstract",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.9,
+      },
       inputSchema: {
         paperId: z
           .string()
@@ -747,6 +763,10 @@ export default function createServer({
     {
       title: "review paper citations",
       description: "Get papers that cite a specific paper",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.8,
+      },
       inputSchema: {
         paperId: z
           .string()
@@ -844,6 +864,10 @@ export default function createServer({
     {
       title: "review paper references",
       description: "Get papers cited by a specific paper",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.8,
+      },
       inputSchema: {
         paperId: z
           .string()
@@ -941,6 +965,10 @@ export default function createServer({
     {
       title: "search authors",
       description: "Search for authors by name or affiliation",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.7,
+      },
       inputSchema: {
         query: z.string().describe("Search query for authors"),
         limit: z
@@ -1036,6 +1064,10 @@ export default function createServer({
     {
       title: "search author's papers",
       description: "Get papers written by a specific author",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.75,
+      },
       inputSchema: {
         authorId: z.string().describe("Author ID"),
         limit: z
@@ -1130,6 +1162,10 @@ export default function createServer({
     {
       title: "look up multiple papers by their IDs",
       description: "Look up multiple papers by their IDs",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.6,
+      },
       inputSchema: {
         paperIds: z
           .array(z.string())
@@ -1227,225 +1263,229 @@ export default function createServer({
   if (config.WILEY_TDM_CLIENT_TOKEN) {
     server.registerTool(
       "download-full-paper-wiley",
-    {
-      title: "download full-text PDF from Wiley",
-      description:
-        "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
-      inputSchema: {
-        doi: z
-          .string()
-          .describe(
-            "DOI of the paper to download (e.g., 10.1111/1467-923X.12168)"
-          ),
+      {
+        title: "download full-text PDF from Wiley",
+        description:
+          "Download full-text PDF of a Wiley paper using its DOI and extract text content (memory only)",
+        annotations: {
+          audience: ["user", "assistant"],
+          priority: 0.5,
+        },
+        inputSchema: {
+          doi: z
+            .string()
+            .describe(
+              "DOI of the paper to download (e.g., 10.1111/1467-923X.12168)"
+            ),
+        },
       },
-    },
-    async ({ doi }) => {
-      try {
-        // Token is guaranteed to be available since tool is only registered when configured
-        // Encode DOI for URL (replace / with %2F)
-        const encodedDoi = encodeURIComponent(doi);
-        const downloadUrl = `https://api.wiley.com/onlinelibrary/tdm/v1/articles/${encodedDoi}`;
-
-        // Make request with Wiley token - Wiley always returns PDFs
-        const response = await axios.get(downloadUrl, {
-          headers: {
-            "Wiley-TDM-Client-Token": config.WILEY_TDM_CLIENT_TOKEN,
-            Accept: "application/pdf",
-          },
-          responseType: "arraybuffer",
-          maxRedirects: 5, // Follow redirects as required by Wiley
-          timeout: 60000, // 60 second timeout for large files
-        });
-
-        // Buffer the entire response in memory
-        const pdfBuffer = Buffer.from(response.data);
-
-        // Extract text using pdfjs-dist (Mozilla's PDF.js library)
+      async ({ doi }) => {
         try {
-          // Get or initialize pdfjs with suppressed output
-          const pdfjs = await initPdfJs();
+          // Token is guaranteed to be available since tool is only registered when configured
+          // Encode DOI for URL (replace / with %2F)
+          const encodedDoi = encodeURIComponent(doi);
+          const downloadUrl = `https://api.wiley.com/onlinelibrary/tdm/v1/articles/${encodedDoi}`;
 
-          // Suppress warnings during PDF processing
-          const originalWarn = console.warn;
-          const originalLog = console.log;
-          const originalError = console.error;
-          const originalStdout = process.stdout.write.bind(process.stdout);
-          const originalStderr = process.stderr.write.bind(process.stderr);
+          // Make request with Wiley token - Wiley always returns PDFs
+          const response = await axios.get(downloadUrl, {
+            headers: {
+              "Wiley-TDM-Client-Token": config.WILEY_TDM_CLIENT_TOKEN,
+              Accept: "application/pdf",
+            },
+            responseType: "arraybuffer",
+            maxRedirects: 5, // Follow redirects as required by Wiley
+            timeout: 60000, // 60 second timeout for large files
+          });
 
-          console.warn = () => {};
-          console.log = () => {};
-          console.error = () => {};
-          process.stdout.write = () => true;
-          process.stderr.write = () => true;
+          // Buffer the entire response in memory
+          const pdfBuffer = Buffer.from(response.data);
 
-          // Convert Buffer to Uint8Array as required by pdfjs-dist
-          const uint8Array = new Uint8Array(pdfBuffer);
+          // Extract text using pdfjs-dist (Mozilla's PDF.js library)
+          try {
+            // Get or initialize pdfjs with suppressed output
+            const pdfjs = await initPdfJs();
 
-          // Load PDF from Uint8Array
-          const loadingTask = pdfjs.getDocument({ data: uint8Array });
-          const pdfDoc = await loadingTask.promise;
+            // Suppress warnings during PDF processing
+            const originalWarn = console.warn;
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalStdout = process.stdout.write.bind(process.stdout);
+            const originalStderr = process.stderr.write.bind(process.stderr);
 
-          let extractedText = "";
+            console.warn = () => {};
+            console.log = () => {};
+            console.error = () => {};
+            process.stdout.write = () => true;
+            process.stderr.write = () => true;
 
-          // Extract text from all pages
-          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-            const page = await pdfDoc.getPage(pageNum);
-            const textContent = await page.getTextContent();
+            // Convert Buffer to Uint8Array as required by pdfjs-dist
+            const uint8Array = new Uint8Array(pdfBuffer);
 
-            // Combine text items from the page
-            const pageText = textContent.items
-              .map((item: any) => item.str)
-              .join(" ");
+            // Load PDF from Uint8Array
+            const loadingTask = pdfjs.getDocument({ data: uint8Array });
+            const pdfDoc = await loadingTask.promise;
 
-            extractedText += pageText + "\n\n";
-          }
+            let extractedText = "";
 
-          // Restore outputs before processing results
-          console.warn = originalWarn;
-          console.log = originalLog;
-          console.error = originalError;
-          process.stdout.write = originalStdout;
-          process.stderr.write = originalStderr;
+            // Extract text from all pages
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+              const page = await pdfDoc.getPage(pageNum);
+              const textContent = await page.getTextContent();
 
-          // Clean up the extracted text
-          const cleanText = extractedText.trim();
+              // Combine text items from the page
+              const pageText = textContent.items
+                .map((item: any) => item.str)
+                .join(" ");
 
-          if (!cleanText || cleanText.length < 50) {
+              extractedText += pageText + "\n\n";
+            }
+
+            // Restore outputs before processing results
+            console.warn = originalWarn;
+            console.log = originalLog;
+            console.error = originalError;
+            process.stdout.write = originalStdout;
+            process.stderr.write = originalStderr;
+
+            // Clean up the extracted text
+            const cleanText = extractedText.trim();
+
+            if (!cleanText || cleanText.length < 50) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      `PDF downloaded successfully but contains minimal text content.\n` +
+                      `This may be a scanned PDF or contain mostly images.\n` +
+                      `Extracted content length: ${cleanText.length} characters`,
+                  },
+                ],
+              };
+            }
+
+            // Return the extracted text
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: cleanText,
+                },
+              ],
+            };
+          } catch (parseError) {
+            const parseErrorMessage =
+              parseError instanceof Error
+                ? parseError.message
+                : String(parseError);
+            logError("Failed to extract text from PDF", {
+              doi,
+              error: parseErrorMessage,
+            });
             return {
               content: [
                 {
                   type: "text",
                   text:
-                    `PDF downloaded successfully but contains minimal text content.\n` +
-                    `This may be a scanned PDF or contain mostly images.\n` +
-                    `Extracted content length: ${cleanText.length} characters`,
+                    `PDF download succeeded but text extraction failed.\n` +
+                    `Error: ${parseErrorMessage}`,
                 },
               ],
+              isError: true,
             };
           }
+        } catch (error) {
+          // Handle specific Wiley API errors
+          if (axios.isAxiosError(error)) {
+            if (error.response?.status === 400) {
+              logError("Wiley API bad request", { doi, status: 400 });
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "Error 400: Bad request to Wiley API.\n\n" +
+                      "This may indicate:\n" +
+                      "- The TDM Client Token format is incorrect\n" +
+                      "- The DOI format is invalid\n" +
+                      "- There's an issue with the request headers\n\n" +
+                      "Please verify your token is correctly configured and the DOI is valid.",
+                  },
+                ],
+                isError: true,
+              };
+            }
+            if (error.response?.status === 403) {
+              logError("Invalid Wiley TDM Client Token", { doi, status: 403 });
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "Error 403: The Wiley TDM Client Token is invalid or not registered.\n\n" +
+                      "Your token may be:\n" +
+                      "- Incorrectly formatted\n" +
+                      "- Expired or revoked\n" +
+                      "- Not properly registered with Wiley\n\n" +
+                      "Please visit https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining " +
+                      "to verify your token or obtain a new one.",
+                  },
+                ],
+                isError: true,
+              };
+            }
+            if (error.response?.status === 404) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      `Error 404: Access denied for DOI ${doi}\n\n` +
+                      "This means:\n" +
+                      "- Your institution doesn't have a subscription to this content\n" +
+                      "- The content is not open access\n" +
+                      "- The DOI may be incorrect or the article doesn't exist\n\n" +
+                      "Contact your institution's library to verify access rights or check if " +
+                      "alternative versions of the paper are available through other sources.",
+                  },
+                ],
+                isError: true,
+              };
+            }
+            if (error.response?.status === 429) {
+              logError("Wiley API rate limit exceeded", { doi, status: 429 });
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "Error 429: Rate limit exceeded\n\n" +
+                      "Wiley's API limits are:\n" +
+                      "- Maximum 3 articles per second\n" +
+                      "- Maximum 60 requests per 10 minutes\n\n" +
+                      "Please wait before making additional requests. Consider implementing " +
+                      "delays between requests to stay within the rate limits.",
+                  },
+                ],
+                isError: true,
+              };
+            }
+          }
 
-          // Return the extracted text
           return {
             content: [
               {
                 type: "text",
-                text: cleanText,
-              },
-            ],
-          };
-        } catch (parseError) {
-          const parseErrorMessage =
-            parseError instanceof Error
-              ? parseError.message
-              : String(parseError);
-          logError("Failed to extract text from PDF", {
-            doi,
-            error: parseErrorMessage,
-          });
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `PDF download succeeded but text extraction failed.\n` +
-                  `Error: ${parseErrorMessage}`,
+                text: `Error downloading paper: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
               },
             ],
             isError: true,
           };
         }
-      } catch (error) {
-        // Handle specific Wiley API errors
-        if (axios.isAxiosError(error)) {
-          if (error.response?.status === 400) {
-            logError("Wiley API bad request", { doi, status: 400 });
-            return {
-              content: [
-                {
-                  type: "text",
-                  text:
-                    "Error 400: Bad request to Wiley API.\n\n" +
-                    "This may indicate:\n" +
-                    "- The TDM Client Token format is incorrect\n" +
-                    "- The DOI format is invalid\n" +
-                    "- There's an issue with the request headers\n\n" +
-                    "Please verify your token is correctly configured and the DOI is valid.",
-                },
-              ],
-              isError: true,
-            };
-          }
-          if (error.response?.status === 403) {
-            logError("Invalid Wiley TDM Client Token", { doi, status: 403 });
-            return {
-              content: [
-                {
-                  type: "text",
-                  text:
-                    "Error 403: The Wiley TDM Client Token is invalid or not registered.\n\n" +
-                    "Your token may be:\n" +
-                    "- Incorrectly formatted\n" +
-                    "- Expired or revoked\n" +
-                    "- Not properly registered with Wiley\n\n" +
-                    "Please visit https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining " +
-                    "to verify your token or obtain a new one.",
-                },
-              ],
-              isError: true,
-            };
-          }
-          if (error.response?.status === 404) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text:
-                    `Error 404: Access denied for DOI ${doi}\n\n` +
-                    "This means:\n" +
-                    "- Your institution doesn't have a subscription to this content\n" +
-                    "- The content is not open access\n" +
-                    "- The DOI may be incorrect or the article doesn't exist\n\n" +
-                    "Contact your institution's library to verify access rights or check if " +
-                    "alternative versions of the paper are available through other sources.",
-                },
-              ],
-              isError: true,
-            };
-          }
-          if (error.response?.status === 429) {
-            logError("Wiley API rate limit exceeded", { doi, status: 429 });
-            return {
-              content: [
-                {
-                  type: "text",
-                  text:
-                    "Error 429: Rate limit exceeded\n\n" +
-                    "Wiley's API limits are:\n" +
-                    "- Maximum 3 articles per second\n" +
-                    "- Maximum 60 requests per 10 minutes\n\n" +
-                    "Please wait before making additional requests. Consider implementing " +
-                    "delays between requests to stay within the rate limits.",
-                },
-              ],
-              isError: true,
-            };
-          }
-        }
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error downloading paper: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            },
-          ],
-          isError: true,
-        };
       }
-    }
-  );
+    );
   }
 
   /**
@@ -1456,6 +1496,10 @@ export default function createServer({
     {
       title: "search arXiv.org for papers",
       description: "Search for papers on arXiv using their API",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.85,
+      },
       inputSchema: {
         query: z.string().describe("Search query for arXiv papers"),
         searchType: z
@@ -1761,6 +1805,10 @@ export default function createServer({
       title: "download full-text PDF from arXiv.org",
       description:
         "Download full-text PDF of an arXiv paper and extract text content (memory only)",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.5,
+      },
       inputSchema: {
         arxivId: z
           .string()
@@ -1977,6 +2025,10 @@ export default function createServer({
     {
       title: "analyze paper citation network",
       description: "Analyze the citation network for a specific paper",
+      annotations: {
+        audience: ["user", "assistant"],
+        priority: 0.7,
+      },
       inputSchema: {
         paperId: z
           .string()
