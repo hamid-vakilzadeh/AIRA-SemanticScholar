@@ -6,7 +6,7 @@
   "exports": "./build/index.js",
   "type": "module",
   "bin": {
-    "aira-semanticscholar": "./build/index.js"
+    "aira-semanticscholar": "build/index.js"
   },
   "scripts": {
     "dev": "TRANSPORT=http npx tsx src/index.ts",
@@ -23,6 +23,14 @@
   "author": "",
   "license": "ISC",
   "description": "MCP server for Semantic Scholar research workflows with stdio and Streamable HTTP transports.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hamid-vakilzadeh/AIRA-SemanticScholar.git"
+  },
+  "homepage": "https://github.com/hamid-vakilzadeh/AIRA-SemanticScholar#readme",
+  "bugs": {
+    "url": "https://github.com/hamid-vakilzadeh/AIRA-SemanticScholar/issues"
+  },
   "devDependencies": {
     "@smithery/cli": "^1.0.0",
     "@types/cors": "^2.8.19",
