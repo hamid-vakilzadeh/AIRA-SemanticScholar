@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ quiet: true });
 
 import express, { Request, Response } from "express";
 import cors from "cors";
