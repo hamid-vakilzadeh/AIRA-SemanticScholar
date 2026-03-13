@@ -1,16 +1,18 @@
 {
-  "name": "mcp-semanticscholar",
-  "module": "./src/index.ts",
+  "name": "aira-semanticscholar",
+  "module": "./build/index.js",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "./build/index.js",
+  "exports": "./build/index.js",
   "type": "module",
   "bin": {
-    "semantic": "./build/index.js"
+    "aira-semanticscholar": "./build/index.js"
   },
   "scripts": {
     "dev": "TRANSPORT=http npx tsx src/index.ts",
-    "build": "npx tsc",
-    "start": "npm run start:http",
+    "build": "node --eval \"require('node:fs').rmSync('build', { recursive: true, force: true })\" && npx tsc",
+    "prepublishOnly": "npm run build",
+    "start": "npm run start:stdio",
     "start:http": "TRANSPORT=http node build/index.js",
     "start:stdio": "node build/index.js"
   },
@@ -20,7 +22,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "MCP server for Semantic Scholar research workflows with stdio and Streamable HTTP transports.",
   "devDependencies": {
     "@smithery/cli": "^1.0.0",
     "@types/cors": "^2.8.19",

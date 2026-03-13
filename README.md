@@ -12,7 +12,21 @@ A Model Context Protocol (MCP) server that provides AI models with comprehensive
 
 ## Installation
 
-- To install this MCP Server visit [Smithery](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar).
+- Local `npx` install path:
+
+```json
+{
+  "mcpServers": {
+    "aira-semanticscholar": {
+      "command": "npx",
+      "args": ["-y", "aira-semanticscholar"]
+    }
+  }
+}
+```
+
+- Smithery listing: [Smithery](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar)
+- Remote Smithery continuity after managed hosting requires publishing a new external URL release that points to your self-hosted `/mcp` endpoint.
 
 ## Optional: Wiley Full-Text Access
 
@@ -26,10 +40,27 @@ To enable full-text PDF download from Wiley papers, you'll need a Wiley TDM Clie
 ```json
 {
   "mcpServers": {
-    "semantic-scholar": {
-      "command": "node",
-      "args": ["/path/to/build/index.js"],
+    "aira-semanticscholar": {
+      "command": "npx",
+      "args": ["-y", "aira-semanticscholar"],
       "env": {
+        "WILEY_TDM_CLIENT_TOKEN": "your-token-here"
+      }
+    }
+  }
+}
+```
+
+To add a Semantic Scholar API key for higher rate limits:
+
+```json
+{
+  "mcpServers": {
+    "aira-semanticscholar": {
+      "command": "npx",
+      "args": ["-y", "aira-semanticscholar"],
+      "env": {
+        "SEMANTIC_SCHOLAR_API_KEY": "your-key-here",
         "WILEY_TDM_CLIENT_TOKEN": "your-token-here"
       }
     }
