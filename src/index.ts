@@ -27,7 +27,7 @@ import {
 } from "./lib/api/semanticScholar/endpoints.js";
 import { createFilter } from "./lib/api/semanticScholar/filters.js";
 import { Paper, Author } from "./lib/api/semanticScholar/types.js";
-import semanticScholarClient from "./lib/api/semanticScholar/client.js";
+import { runWithSemanticScholarRequestContext } from "./lib/api/semanticScholar/client.js";
 
 // Import and configure pdfjs-dist once
 let pdfjsLib: any = null;
@@ -92,6 +92,10 @@ app.use(
 );
 
 app.use(express.json());
+
+app.get("/health", (_req: Request, res: Response) => {
+  res.status(200).json({ ok: true });
+});
 
 /**
  * Well-Known Endpoint for MCP Configuration Schema
@@ -244,6 +248,18 @@ export default function createServer({
     }
   };
 
+  const registerTool = (
+    name: string,
+    definition: any,
+    handler: (...args: any[]) => Promise<any>
+  ) =>
+    server.registerTool(name, definition, async (...args: any[]) =>
+      runWithSemanticScholarRequestContext(
+        { apiKey: config.SEMANTIC_SCHOLAR_API_KEY },
+        () => handler(...args)
+      )
+    );
+
   /**
    * Helper Functions
    *
@@ -332,7 +348,7 @@ export default function createServer({
   /**
    * Basic paper search with just a query and limit
    */
-  server.registerTool(
+  registerTool(
     "papers-search-basic",
     {
       title: "basic search for papers",
@@ -441,7 +457,7 @@ export default function createServer({
   /**
    * Advanced paper search with multiple filters
    */
-  server.registerTool(
+  registerTool(
     "paper-search-advanced",
     {
       title: "advanced search for papers",
@@ -633,7 +649,7 @@ export default function createServer({
   /**
    * Find a paper by closest title match
    */
-  server.registerTool(
+  registerTool(
     "search-paper-title",
     {
       title: "search for a specific paper",
@@ -749,7 +765,7 @@ export default function createServer({
   /**
    * Get detailed information about a specific paper
    */
-  server.registerTool(
+  registerTool(
     "get-paper-abstract",
     {
       title: "read abstract",
@@ -796,7 +812,7 @@ export default function createServer({
   /**
    * Get papers that cite a specific paper
    */
-  server.registerTool(
+  registerTool(
     "papers-citations",
     {
       title: "review paper citations",
@@ -897,7 +913,7 @@ export default function createServer({
   /**
    * Get papers cited by a specific paper
    */
-  server.registerTool(
+  registerTool(
     "papers-references",
     {
       title: "review paper references",
@@ -998,7 +1014,7 @@ export default function createServer({
   /**
    * Search for authors by name or affiliation
    */
-  server.registerTool(
+  registerTool(
     "authors-search",
     {
       title: "search authors",
@@ -1097,7 +1113,7 @@ export default function createServer({
   /**
    * Get papers written by a specific author
    */
-  server.registerTool(
+  registerTool(
     "authors-papers",
     {
       title: "search author's papers",
@@ -1195,7 +1211,7 @@ export default function createServer({
   /**
    * Look up multiple papers by their IDs
    */
-  server.registerTool(
+  registerTool(
     "papers-batch",
     {
       title: "look up multiple papers by their IDs",
@@ -1299,7 +1315,7 @@ export default function createServer({
    * Only register this tool if WILEY_TDM_CLIENT_TOKEN is configured
    */
   if (config.WILEY_TDM_CLIENT_TOKEN) {
-    server.registerTool(
+    registerTool(
       "download-full-paper-wiley",
       {
         title: "download full-text PDF from Wiley",
@@ -1529,7 +1545,7 @@ export default function createServer({
   /**
    * Search arXiv for papers
    */
-  server.registerTool(
+  registerTool(
     "search-arxiv",
     {
       title: "search arXiv.org for papers",
@@ -1837,7 +1853,7 @@ export default function createServer({
   /**
    * Download full-text PDF from arXiv and convert to text
    */
-  server.registerTool(
+  registerTool(
     "download-full-paper-arxiv",
     {
       title: "download full-text PDF from arXiv.org",
@@ -2058,7 +2074,7 @@ export default function createServer({
   /**
    * Analyze the citation network for a specific paper
    */
-  server.registerTool(
+  registerTool(
     "analysis-citation-network",
     {
       title: "analyze paper citation network",
@@ -2340,12 +2356,6 @@ app.post("/mcp", async (req: Request, res: Response) => {
         debug: rawConfig.debug || false,
       });
 
-      // Set API key on the semantic scholar client
-      if (config.SEMANTIC_SCHOLAR_API_KEY) {
-        semanticScholarClient.defaults.headers.common["x-api-key"] =
-          config.SEMANTIC_SCHOLAR_API_KEY;
-      }
-
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (sessionId) => {
@@ -2412,10 +2422,31 @@ app.delete("/mcp", handleSessionRequest);
 
 // Main function to start the server in HTTP mode
 async function main() {
-  // Run in HTTP mode
-  app.listen(PORT, () => {
-    console.log(`MCP HTTP Server listening on port ${PORT}`);
+  const transport = process.env.TRANSPORT?.toLowerCase() || "stdio";
+
+  if (transport === "http") {
+    app.listen(PORT, () => {
+      console.log(`MCP HTTP Server listening on port ${PORT}`);
+    });
+    return;
+  }
+
+  if (transport !== "stdio") {
+    throw new Error(
+      `Unsupported TRANSPORT "${process.env.TRANSPORT}". Use "stdio" or "http".`
+    );
+  }
+
+  const config = configSchema.parse({
+    SEMANTIC_SCHOLAR_API_KEY: process.env.SEMANTIC_SCHOLAR_API_KEY || undefined,
+    WILEY_TDM_CLIENT_TOKEN: process.env.WILEY_TDM_CLIENT_TOKEN || undefined,
+    debug: process.env.DEBUG === "true" || false,
   });
+
+  const server = createServer({ config });
+  const stdioTransport = new StdioServerTransport();
+  await server.connect(stdioTransport);
+  console.error("MCP Server running in stdio mode");
 }
 
 // Start the server

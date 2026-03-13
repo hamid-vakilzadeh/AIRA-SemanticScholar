@@ -1,4 +1,36 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import { AsyncLocalStorage } from "node:async_hooks";
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  InternalAxiosRequestConfig,
+} from "axios";
+
+type SemanticScholarRequestContext = {
+  apiKey?: string;
+};
+
+const requestContext = new AsyncLocalStorage<SemanticScholarRequestContext>();
+
+export const runWithSemanticScholarRequestContext = <T>(
+  context: SemanticScholarRequestContext,
+  callback: () => T
+): T => requestContext.run(context, callback);
+
+const setHeader = (
+  config: InternalAxiosRequestConfig,
+  name: string,
+  value?: string
+) => {
+  const headers = AxiosHeaders.from(config.headers);
+  config.headers = headers;
+
+  if (value) {
+    headers.set(name, value);
+    return;
+  }
+
+  headers.delete(name);
+};
 
 // Create an axios instance with the base URL for Semantic Scholar API
 const semanticScholarClient = axios.create({
@@ -7,13 +39,6 @@ const semanticScholarClient = axios.create({
     "Content-Type": "application/json",
   },
 });
-
-// Add API key if available from environment (fallback)
-if (process.env.SEMANTIC_SCHOLAR_API_KEY) {
-  semanticScholarClient.defaults.headers.common["x-api-key"] =
-    process.env.SEMANTIC_SCHOLAR_API_KEY;
-}
-
 
 // Track last request time for rate-limited endpoints
 const lastRequestTime: Record<string, number> = {
@@ -27,6 +52,10 @@ const lastRequestTime: Record<string, number> = {
 // Add request interceptor for rate limiting
 semanticScholarClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    const apiKey =
+      requestContext.getStore()?.apiKey || process.env.SEMANTIC_SCHOLAR_API_KEY;
+    setHeader(config, "x-api-key", apiKey);
+
     // Determine which rate limit applies
     let endpoint = "default";
     const url = config.url || "";
