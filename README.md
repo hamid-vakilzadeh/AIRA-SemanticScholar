@@ -1,4 +1,4 @@
-[![smithery badge](https://smithery.ai/badge/@hamid-vakilzadeh/mcpsemanticscholar)](https://smithery.ai/server/@hamid-vakilzadeh/mcpsemanticscholar)
+[![LightNow capabilities](https://lightnow.ai/badge/io.github.hamid-vakilzadeh/aira-semanticscholar)](https://lightnow.ai/servers/io.github.hamid-vakilzadeh/aira-semanticscholar)
 
 # AI Research Assistant - MCP
 
